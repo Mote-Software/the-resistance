@@ -8,6 +8,9 @@ class Game {
   private socket: any;
   private yaw: number = 0;
   private pitch: number = 0;
+  private lastTime: number = 0;
+  private frameCount: number = 0;
+  private fpsUpdateTime: number = 0;
 
   constructor() {
     this.init();
@@ -27,19 +30,21 @@ class Game {
   }
 
   private createScene() {
-    // Add basic lighting
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+    // Add softer lighting for wartime atmosphere
+    const ambientLight = new THREE.AmbientLight(0x606060, 0.6); // Brighter ambient light
     this.scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5); // Softer directional light
     directionalLight.position.set(10, 10, 5);
+    directionalLight.castShadow = true;
     this.scene.add(directionalLight);
 
-    // Create a simple ground plane
+    // Create a more natural ground plane (concrete/dirt)
     const groundGeometry = new THREE.PlaneGeometry(100, 100);
-    const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x3a3a3a });
+    const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x8B7355 }); // Brown dirt/concrete color
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
     this.scene.add(ground);
 
     // Add some basic buildings/cover
@@ -112,14 +117,14 @@ class Game {
     });
 
     // Handle movement in animation loop
-    this.handleMovement = () => {
-      const speed = 0.1;
+    this.handleMovement = (deltaTime: number) => {
+      const speed = 5.0; // units per second
       const direction = new THREE.Vector3();
       
-      if (keys['KeyW']) direction.z -= speed;
-      if (keys['KeyS']) direction.z += speed;
-      if (keys['KeyA']) direction.x -= speed;
-      if (keys['KeyD']) direction.x += speed;
+      if (keys['KeyW']) direction.z -= speed * deltaTime;
+      if (keys['KeyS']) direction.z += speed * deltaTime;
+      if (keys['KeyA']) direction.x -= speed * deltaTime;
+      if (keys['KeyD']) direction.x += speed * deltaTime;
       
       if (direction.length() > 0) {
         direction.applyQuaternion(this.camera.quaternion);
@@ -129,14 +134,34 @@ class Game {
     };
   }
 
-  private handleMovement() {
+  private handleMovement(deltaTime: number) {
     // Movement handling is set up in setupControls
   }
 
-  private animate() {
-    requestAnimationFrame(() => this.animate());
+  private updateFPS(currentTime: number) {
+    this.frameCount++;
     
-    this.handleMovement();
+    // Update FPS every second
+    if (currentTime - this.fpsUpdateTime >= 1000) {
+      const fps = Math.round((this.frameCount * 1000) / (currentTime - this.fpsUpdateTime));
+      const fpsElement = document.getElementById('fps');
+      if (fpsElement) {
+        fpsElement.textContent = `FPS: ${fps}`;
+      }
+      this.frameCount = 0;
+      this.fpsUpdateTime = currentTime;
+    }
+  }
+
+  private animate(currentTime: number = 0) {
+    requestAnimationFrame((time) => this.animate(time));
+    
+    // Calculate delta time in seconds
+    const deltaTime = this.lastTime === 0 ? 0 : (currentTime - this.lastTime) / 1000;
+    this.lastTime = currentTime;
+    
+    this.updateFPS(currentTime);
+    this.handleMovement(deltaTime);
     this.renderer.render(this.scene, this.camera);
   }
 
