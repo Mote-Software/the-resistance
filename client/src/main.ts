@@ -6,6 +6,8 @@ class Game {
   private camera: THREE.PerspectiveCamera;
   private renderer: THREE.WebGLRenderer;
   private socket: any;
+  private yaw: number = 0;
+  private pitch: number = 0;
 
   constructor() {
     this.init();
@@ -76,24 +78,25 @@ class Game {
   }
 
   private setupControls() {
-    // Simple mouse look controls
-    let isMouseDown = false;
-    
-    document.addEventListener('mousedown', () => {
-      isMouseDown = true;
+    // Request pointer lock on click
+    document.addEventListener('click', () => {
       document.body.requestPointerLock();
     });
 
-    document.addEventListener('mouseup', () => {
-      isMouseDown = false;
-    });
-
+    // Handle mouse look when pointer is locked
     document.addEventListener('mousemove', (event) => {
-      if (document.pointerLockElement === document.body && isMouseDown) {
+      if (document.pointerLockElement === document.body) {
         const sensitivity = 0.002;
-        this.camera.rotation.y -= event.movementX * sensitivity;
-        this.camera.rotation.x -= event.movementY * sensitivity;
-        this.camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, this.camera.rotation.x));
+        
+        // Update yaw and pitch angles
+        this.yaw -= event.movementX * sensitivity;
+        this.pitch -= event.movementY * sensitivity;
+        
+        // Clamp pitch to prevent over-rotation
+        this.pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, this.pitch));
+        
+        // Apply rotation using quaternion to avoid gimbal lock
+        this.camera.quaternion.setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
       }
     });
 
