@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { io } from 'socket.io-client';
 import { RGBELoader } from 'three-stdlib';
+import { WeaponManager } from './weapons/WeaponManager';
+import { LeeEnfieldConfig } from './weapons/configs/LeeEnfield';
 
 class Game {
   private scene: THREE.Scene;
@@ -12,10 +14,13 @@ class Game {
   private lastTime: number = 0;
   private frameCount: number = 0;
   private fpsUpdateTime: number = 0;
+  private weaponManager: WeaponManager;
+  private isMoving: boolean = false;
 
   constructor() {
     this.init();
     this.createScene();
+    this.setupWeapons();
     this.connectToServer();
     this.animate();
     this.setupControls();
@@ -98,6 +103,24 @@ class Game {
 
     // Position camera
     this.camera.position.set(0, 1.8, 5);
+    
+    // Test cube removed - weapon system is working
+  }
+
+  private async setupWeapons() {
+    // Initialize weapon manager
+    this.weaponManager = new WeaponManager(this.scene, this.camera);
+    
+    // Register available weapons
+    this.weaponManager.registerWeapon(LeeEnfieldConfig);
+    
+    // Equip default weapon
+    try {
+      await this.weaponManager.equipWeapon('lee_enfield_mk1');
+      console.log('Lee Enfield equipped successfully');
+    } catch (error) {
+      console.error('Failed to equip weapon:', error);
+    }
   }
 
   private createSkybox() {
@@ -112,7 +135,7 @@ class Game {
     // Load HDR skybox using proper HDR loader
     const hdrLoader = new RGBELoader();
     hdrLoader.load(
-      '/skybox.hdr',
+      '/assets/textures/skyboxes/skybox.hdr',
       (texture) => {
         // Properly configure HDR texture
         texture.mapping = THREE.EquirectangularReflectionMapping;
@@ -226,7 +249,10 @@ class Game {
       if (keys['KeyA']) direction.x -= speed * deltaTime;
       if (keys['KeyD']) direction.x += speed * deltaTime;
       
-      if (direction.length() > 0) {
+      // Track if player is moving for weapon sway
+      this.isMoving = direction.length() > 0;
+      
+      if (this.isMoving) {
         direction.applyQuaternion(this.camera.quaternion);
         direction.y = 0; // Keep movement on ground level
         this.camera.position.add(direction);
@@ -262,6 +288,12 @@ class Game {
     
     this.updateFPS(currentTime);
     this.handleMovement(deltaTime);
+    
+    // Update weapon system
+    if (this.weaponManager) {
+      this.weaponManager.update(deltaTime, this.isMoving, currentTime * 0.001);
+    }
+    
     this.renderer.render(this.scene, this.camera);
   }
 
