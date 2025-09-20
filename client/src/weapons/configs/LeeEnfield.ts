@@ -12,7 +12,7 @@ export const LeeEnfieldConfig: WeaponConfig = {
     ao: '/assets/textures/weapons/lee_enfield_mk1_AO.png',
   },
   // First-person weapon positioning (relative to camera)  
-  position: new THREE.Vector3(0.4, -0.85, -0.8), // Right, tiny bit lower, forward
+  position: new THREE.Vector3(0.4, -0.85, -1.2), // Right, tiny bit lower, forward
   rotation: new THREE.Euler(0, Math.PI, 0), // Rotate 180° to face forward
   scale: new THREE.Vector3(0.035, 0.035, 0.035), // Larger scale to see more detail
 };
