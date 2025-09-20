@@ -5,16 +5,16 @@ import { WeaponManager } from './weapons/WeaponManager';
 import { LeeEnfieldConfig } from './weapons/configs/LeeEnfield';
 
 class Game {
-  private scene: THREE.Scene;
-  private camera: THREE.PerspectiveCamera;
-  private renderer: THREE.WebGLRenderer;
+  private scene!: THREE.Scene;
+  private camera!: THREE.PerspectiveCamera;
+  private renderer!: THREE.WebGLRenderer;
   private socket: any;
   private yaw: number = 0;
   private pitch: number = 0;
   private lastTime: number = 0;
   private frameCount: number = 0;
   private fpsUpdateTime: number = 0;
-  private weaponManager: WeaponManager;
+  private weaponManager!: WeaponManager;
   private isMoving: boolean = false;
 
   constructor() {
@@ -233,10 +233,20 @@ class Game {
     
     document.addEventListener('keydown', (event) => {
       keys[event.code] = true;
+
+      // Handle ADS (Aim Down Sights) with Shift key
+      if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+        this.weaponManager.startAiming();
+      }
     });
 
     document.addEventListener('keyup', (event) => {
       keys[event.code] = false;
+
+      // Stop ADS when Shift is released
+      if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+        this.weaponManager.stopAiming();
+      }
     });
 
     // Handle movement in animation loop

@@ -32,6 +32,36 @@
         font-size: 14px;
         z-index: 100;
       }
+      #crosshairs {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 20px;
+        height: 20px;
+        z-index: 100;
+        pointer-events: none;
+      }
+      #crosshairs::before,
+      #crosshairs::after {
+        content: '';
+        position: absolute;
+        background-color: rgba(255, 255, 255, 0.8);
+      }
+      #crosshairs::before {
+        top: 50%;
+        left: 8px;
+        width: 4px;
+        height: 2px;
+        transform: translateY(-50%);
+      }
+      #crosshairs::after {
+        left: 50%;
+        top: 8px;
+        width: 2px;
+        height: 4px;
+        transform: translateX(-50%);
+      }
     </style>
   </head>
   <body>
@@ -39,6 +69,7 @@
       <div>The Resistance - FPS Game</div>
     </div>
     <div id="fps">FPS: 0</div>
+    <div id="crosshairs"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

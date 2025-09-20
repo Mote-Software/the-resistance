@@ -14,12 +14,18 @@ export interface WeaponConfig {
   position: THREE.Vector3;
   rotation: THREE.Euler;
   scale: THREE.Vector3;
+  adsPosition: THREE.Vector3;
+  adsRotation: THREE.Euler;
+  adsScale: THREE.Vector3;
 }
 
 export class Weapon {
   private group: THREE.Group;
   private config: WeaponConfig;
   private isLoaded: boolean = false;
+  private isAiming: boolean = false;
+  private aimTransition: number = 0; // 0 = hip fire, 1 = ADS
+  private aimSpeed: number = 8; // Transition speed
 
   constructor(config: WeaponConfig) {
     this.config = config;
@@ -121,34 +127,74 @@ export class Weapon {
     this.group.rotation.copy(rotation);
   }
 
+  // ADS control methods
+  startAiming(): void {
+    this.isAiming = true;
+  }
+
+  stopAiming(): void {
+    this.isAiming = false;
+  }
+
+  getAimTransition(): number {
+    return this.aimTransition;
+  }
+
   // Update weapon position to stay relative to camera
   update(deltaTime: number, camera: THREE.Camera, isMoving: boolean = false, currentTime: number = 0): void {
     if (this.isLoaded) {
-      // Create a world position based on camera position + local offset
-      const offset = new THREE.Vector3();
-      offset.copy(this.config.position);
-      
-      // Add weapon sway when moving
-      if (isMoving) {
-        const swayAmount = 0.01;
+      // Update ADS transition
+      const targetTransition = this.isAiming ? 1 : 0;
+      const transitionSpeed = this.aimSpeed * deltaTime;
+      this.aimTransition = THREE.MathUtils.lerp(this.aimTransition, targetTransition, transitionSpeed);
+
+      // Interpolate between hip and ADS positions
+      const hipPosition = this.config.position.clone();
+      const adsPosition = this.config.adsPosition.clone();
+      const interpolatedPosition = hipPosition.lerp(adsPosition, this.aimTransition);
+
+      // Interpolate between hip and ADS rotations
+      const hipRotation = this.config.rotation.clone();
+      const adsRotation = this.config.adsRotation.clone();
+      const interpolatedRotation = new THREE.Euler(
+        THREE.MathUtils.lerp(hipRotation.x, adsRotation.x, this.aimTransition),
+        THREE.MathUtils.lerp(hipRotation.y, adsRotation.y, this.aimTransition),
+        THREE.MathUtils.lerp(hipRotation.z, adsRotation.z, this.aimTransition)
+      );
+
+      // Interpolate scale
+      const hipScale = this.config.scale.clone();
+      const adsScale = this.config.adsScale.clone();
+      const interpolatedScale = hipScale.lerp(adsScale, this.aimTransition);
+
+      // Create world position based on camera position + interpolated offset
+      const offset = interpolatedPosition.clone();
+
+      // Reduce weapon sway when aiming
+      const swayMultiplier = 1 - (this.aimTransition * 0.7); // 70% reduction when fully aimed
+      if (isMoving && swayMultiplier > 0) {
+        const swayAmount = 0.01 * swayMultiplier;
         const swaySpeed = 8;
         offset.x += Math.sin(currentTime * swaySpeed) * swayAmount;
         offset.y += Math.sin(currentTime * swaySpeed * 2) * swayAmount * 0.5;
         offset.z += Math.cos(currentTime * swaySpeed) * swayAmount * 0.3;
       }
-      
+
       offset.applyQuaternion(camera.quaternion);
       this.group.position.copy(camera.position).add(offset);
-      
-      // Apply camera rotation plus weapon's local rotation
+
+      // Apply camera rotation plus interpolated weapon rotation
       this.group.rotation.copy(camera.rotation);
-      this.group.rotateY(this.config.rotation.y);
-      this.group.rotateX(this.config.rotation.x);
-      this.group.rotateZ(this.config.rotation.z);
-      
-      // Add subtle rotation sway when moving
-      if (isMoving) {
-        const rotSway = 0.005;
+      this.group.rotateY(interpolatedRotation.y);
+      this.group.rotateX(interpolatedRotation.x);
+      this.group.rotateZ(interpolatedRotation.z);
+
+      // Apply interpolated scale
+      this.group.scale.copy(interpolatedScale);
+
+      // Add subtle rotation sway when moving (reduced when aiming)
+      if (isMoving && swayMultiplier > 0) {
+        const rotSway = 0.005 * swayMultiplier;
         this.group.rotateZ(Math.sin(currentTime * 6) * rotSway);
         this.group.rotateX(Math.cos(currentTime * 8) * rotSway * 0.5);
       }
@@ -233,5 +279,22 @@ export class WeaponManager {
 
   switchToPrevious(): void {
     // Implementation for cycling through weapons
+  }
+
+  // ADS control methods
+  startAiming(): void {
+    if (this.activeWeapon) {
+      this.activeWeapon.startAiming();
+    }
+  }
+
+  stopAiming(): void {
+    if (this.activeWeapon) {
+      this.activeWeapon.stopAiming();
+    }
+  }
+
+  getAimTransition(): number {
+    return this.activeWeapon ? this.activeWeapon.getAimTransition() : 0;
   }
 }
