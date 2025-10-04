@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { io } from 'socket.io-client';
-import { RGBELoader } from 'three-stdlib';
+import { RGBELoader, TDSLoader } from 'three-stdlib';
 import { WeaponManager } from './weapons/WeaponManager';
 import { FNScarConfig } from './weapons/configs/FNScar';
 
@@ -57,7 +57,7 @@ class Game {
     const sunLight = new THREE.DirectionalLight(0xffa500, 2.0); // Warm orange sunset color
     sunLight.position.set(50, 15, 30); // Flipped direction - low angle from opposite horizon
     sunLight.castShadow = true;
-    
+
     // Configure shadow properties for better quality
     sunLight.shadow.mapSize.width = 2048;
     sunLight.shadow.mapSize.height = 2048;
@@ -67,44 +67,76 @@ class Game {
     sunLight.shadow.camera.right = 50;
     sunLight.shadow.camera.top = 50;
     sunLight.shadow.camera.bottom = -50;
-    
+
     this.scene.add(sunLight);
 
-    // Create a bright concrete ground plane (urban wartime setting)
-    const groundGeometry = new THREE.PlaneGeometry(100, 100);
-    const groundMaterial = new THREE.MeshLambertMaterial({ color: 0xaaaaaa }); // Much brighter gray concrete
-    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    this.scene.add(ground);
-
-    // Add some basic buildings/cover
-    for (let i = 0; i < 10; i++) {
-      const buildingGeometry = new THREE.BoxGeometry(
-        Math.random() * 3 + 1,
-        Math.random() * 5 + 2,
-        Math.random() * 3 + 1
-      );
-      const buildingMaterial = new THREE.MeshLambertMaterial({ 
-        color: new THREE.Color().setHSL(0, 0, Math.random() * 0.4 + 0.6) // Much brighter, less brown
-      });
-      const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
-      
-      building.position.x = (Math.random() - 0.5) * 50;
-      building.position.z = (Math.random() - 0.5) * 50;
-      building.position.y = buildingGeometry.parameters.height / 2;
-      
-      // Enable shadows for buildings
-      building.castShadow = true;
-      building.receiveShadow = true;
-      
-      this.scene.add(building);
-    }
+    // Load town model instead of procedural buildings
+    this.loadTownModel();
 
     // Position camera
-    this.camera.position.set(0, 1.8, 5);
-    
-    // Test cube removed - weapon system is working
+    this.camera.position.set(0, 2.5, 5);
+  }
+
+  private loadTownModel() {
+    console.log('Loading town model...');
+    const loader = new TDSLoader();
+    const textureLoader = new THREE.TextureLoader();
+
+    // Load textures
+    const diffuseTexture = textureLoader.load('/assets/textures/environment/Diffuse.jpg');
+    const specularTexture = textureLoader.load('/assets/textures/environment/Specular.jpg');
+    const townTexture1 = textureLoader.load('/assets/textures/environment/Town.jpg');
+    const townTexture2 = textureLoader.load('/assets/textures/environment/Town2.jpg');
+    const townTexture3 = textureLoader.load('/assets/textures/environment/Town3.jpg');
+    const sandTexture = textureLoader.load('/assets/textures/environment/Sand2.jpg');
+    const topTexture = textureLoader.load('/assets/textures/environment/Town - Top.jpg');
+
+    loader.load(
+      '/assets/models/environment/Town.3ds',
+      (object) => {
+        console.log('Town model loaded successfully');
+
+        // Apply textures to meshes
+        object.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            console.log(`Processing mesh: ${child.name}`);
+
+            // Create material with textures
+            child.material = new THREE.MeshStandardMaterial({
+              map: diffuseTexture,
+              roughness: 0.8,
+              metalness: 0.2,
+            });
+
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+
+        // Scale and position the town
+        object.scale.set(0.1, 0.1, 0.1); // Adjust scale as needed
+        object.position.y = 0; // Ground level
+
+        // Rotate to fix orientation (3DS models often need rotation)
+        object.rotation.x = -Math.PI / 2; // Rotate 90 degrees around X axis
+
+        this.scene.add(object);
+        console.log('Town model added to scene');
+      },
+      (progress) => {
+        console.log(`Loading progress: ${(progress.loaded / progress.total * 100).toFixed(2)}%`);
+      },
+      (error) => {
+        console.error('Failed to load town model:', error);
+        // Fallback: create simple ground plane
+        const groundGeometry = new THREE.PlaneGeometry(100, 100);
+        const groundMaterial = new THREE.MeshLambertMaterial({ color: 0xaaaaaa });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        this.scene.add(ground);
+      }
+    );
   }
 
   private async setupWeapons() {
@@ -126,12 +158,12 @@ class Game {
   private createSkybox() {
     // Create skybox geometry - large sphere that surrounds the scene
     const skyboxGeometry = new THREE.SphereGeometry(500, 32, 32);
-    
+
     // Create material first
     const skyboxMaterial = new THREE.MeshBasicMaterial({
       side: THREE.BackSide // Render on inside of sphere
     });
-    
+
     // Load HDR skybox using proper HDR loader
     const hdrLoader = new RGBELoader();
     hdrLoader.load(
@@ -140,31 +172,31 @@ class Game {
         // Properly configure HDR texture
         texture.mapping = THREE.EquirectangularReflectionMapping;
         texture.needsUpdate = true;
-        
+
         // Generate mipmaps for better quality
         const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
         const envMap = pmremGenerator.fromEquirectangular(texture).texture;
-        
+
         // Use the processed environment map
         this.scene.environment = envMap;
         this.scene.background = envMap;
-        
+
         // Clean up
         pmremGenerator.dispose();
         texture.dispose();
-        
+
         console.log('Loaded and processed HDR environment map');
       },
       undefined,
       (error) => {
         // Fallback: create procedural gradient skybox
         console.log('HDR load failed, using procedural skybox:', error);
-        
+
         const canvas = document.createElement('canvas');
         canvas.width = 2048;
         canvas.height = 1024;
         const ctx = canvas.getContext('2d')!;
-        
+
         // Create sunset gradient
         const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
         gradient.addColorStop(0, '#87CEEB');    // Sky blue at top
@@ -172,23 +204,23 @@ class Game {
         gradient.addColorStop(0.6, '#FF6347');  // Tomato/orange
         gradient.addColorStop(0.8, '#FF4500');  // Orange red
         gradient.addColorStop(1, '#2F1B14');    // Dark brown at bottom
-        
+
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
+
         // Create texture from canvas
         const fallbackTexture = new THREE.CanvasTexture(canvas);
         fallbackTexture.mapping = THREE.EquirectangularReflectionMapping;
-        
+
         skyboxMaterial.map = fallbackTexture;
         skyboxMaterial.needsUpdate = true;
-        
+
         // Create skybox mesh only for fallback
         const skyboxMesh = new THREE.Mesh(skyboxGeometry, skyboxMaterial);
         this.scene.add(skyboxMesh);
       }
     );
-    
+
     // Remove the sky blue clear color since we have a skybox now
     this.renderer.setClearColor(0x000000, 0);
   }
