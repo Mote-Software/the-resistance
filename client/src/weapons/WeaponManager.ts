@@ -1,5 +1,5 @@
-import * as THREE from 'three';
-import { FBXLoader } from 'three-stdlib';
+import * as THREE from "three";
+import { FBXLoader } from "three-stdlib";
 
 export interface WeaponConfig {
   name: string;
@@ -37,23 +37,80 @@ export class Weapon {
     return new Promise((resolve, reject) => {
       console.log(`Loading weapon model: ${this.config.modelPath}`);
       const loader = new FBXLoader();
-      
+
       loader.load(
         this.config.modelPath,
         (object) => {
           console.log(`Successfully loaded ${this.config.name} model`);
-          
+
           // Clear any existing children
           this.group.clear();
-          
-          // Apply PBR materials to all meshes
+
+          // Keep exact original FBX material colors with PBR textures
+          console.log("Traversing object for meshes...");
+          const textureLoader = new THREE.TextureLoader();
+          const normalTexture = textureLoader.load(this.config.textures.normal);
+          const roughnessTexture = textureLoader.load(
+            this.config.textures.roughness
+          );
+          const metalnessTexture = textureLoader.load(
+            this.config.textures.metalness
+          );
+
           object.traverse((child) => {
             if (child instanceof THREE.Mesh) {
-              console.log(`Setting up PBR material for mesh: ${child.name}`);
-              this.setupPBRMaterial(child);
+              console.log(`Processing mesh: ${child.name}`);
+              child.castShadow = true;
+              child.receiveShadow = true;
+
+              const originalMat = child.material;
+
+              // Handle array of materials (multi-material mesh)
+              if (Array.isArray(originalMat)) {
+                console.log(`Mesh has ${originalMat.length} materials`);
+                child.material = originalMat.map((mat: any, index: number) => {
+                  let color = mat.color ? mat.color.getHex() : 0x83755c;
+                  // Darken colors slightly to reduce brightness
+                  const colorObj = new THREE.Color(color);
+                  colorObj.multiplyScalar(0.8); // Darken by 30%
+                  console.log(
+                    `Material ${index}: original 0x${color.toString(
+                      16
+                    )}, darkened to 0x${colorObj.getHex().toString(16)}`
+                  );
+                  return new THREE.MeshStandardMaterial({
+                    color: colorObj,
+                    normalMap: normalTexture,
+                    roughnessMap: roughnessTexture,
+                    metalnessMap: metalnessTexture,
+                    roughness: 1.0, // Maximum roughness for completely matte
+                    metalness: 0.0, // No metalness at all
+                  });
+                });
+              } else if (originalMat) {
+                // Single material
+                const mat = originalMat as any;
+                let color = mat.color ? mat.color.getHex() : 0x83755c;
+                // Darken colors slightly to reduce brightness
+                const colorObj = new THREE.Color(color);
+                colorObj.multiplyScalar(0.7); // Darken by 30%
+                console.log(
+                  `Single material: original 0x${color.toString(
+                    16
+                  )}, darkened to 0x${colorObj.getHex().toString(16)}`
+                );
+                child.material = new THREE.MeshStandardMaterial({
+                  color: colorObj,
+                  normalMap: normalTexture,
+                  roughnessMap: roughnessTexture,
+                  metalnessMap: metalnessTexture,
+                  roughness: 1.0, // Maximum roughness for completely matte
+                  metalness: 0.0, // No metalness at all
+                });
+              }
             }
           });
-          
+
           // Apply transform to the group instead of the object
           this.group.add(object);
           this.group.position.copy(this.config.position);
@@ -64,7 +121,11 @@ export class Weapon {
           resolve();
         },
         (progress) => {
-          console.log(`Loading progress: ${this.config.name} - ${(progress.loaded / progress.total * 100)}%`);
+          console.log(
+            `Loading progress: ${this.config.name} - ${
+              (progress.loaded / progress.total) * 100
+            }%`
+          );
         },
         (error) => {
           console.error(`Failed to load weapon ${this.config.name}:`, error);
@@ -76,35 +137,55 @@ export class Weapon {
 
   private setupPBRMaterial(mesh: THREE.Mesh): void {
     const textureLoader = new THREE.TextureLoader();
-    
+
     console.log(`Loading textures for ${this.config.name}`);
-    
+
     // Load all PBR textures
-    const albedoTexture = textureLoader.load(this.config.textures.albedo, () => {
-      console.log(`Loaded albedo texture: ${this.config.textures.albedo}`);
-    });
-    const normalTexture = textureLoader.load(this.config.textures.normal, () => {
-      console.log(`Loaded normal texture: ${this.config.textures.normal}`);
-    });
-    const roughnessTexture = textureLoader.load(this.config.textures.roughness, () => {
-      console.log(`Loaded roughness texture: ${this.config.textures.roughness}`);
-    });
-    const metalnessTexture = textureLoader.load(this.config.textures.metalness, () => {
-      console.log(`Loaded metalness texture: ${this.config.textures.metalness}`);
-    });
+    const albedoTexture = textureLoader.load(
+      this.config.textures.albedo,
+      () => {
+        console.log(`Loaded albedo texture: ${this.config.textures.albedo}`);
+      }
+    );
+    const normalTexture = textureLoader.load(
+      this.config.textures.normal,
+      () => {
+        console.log(`Loaded normal texture: ${this.config.textures.normal}`);
+      }
+    );
+    const roughnessTexture = textureLoader.load(
+      this.config.textures.roughness,
+      () => {
+        console.log(
+          `Loaded roughness texture: ${this.config.textures.roughness}`
+        );
+      }
+    );
+    const metalnessTexture = textureLoader.load(
+      this.config.textures.metalness,
+      () => {
+        console.log(
+          `Loaded metalness texture: ${this.config.textures.metalness}`
+        );
+      }
+    );
     const aoTexture = textureLoader.load(this.config.textures.ao, () => {
       console.log(`Loaded AO texture: ${this.config.textures.ao}`);
     });
-    
-    // Create PBR material
+
+    // Create PBR material matching Blender setup - no albedo map, just base color
     const material = new THREE.MeshStandardMaterial({
-      map: albedoTexture,
+      color: 0x83755c, // Tan/beige base color from Blender
       normalMap: normalTexture,
-      roughnessMap: roughnessTexture,
-      metalnessMap: metalnessTexture,
-      aoMap: aoTexture,
+      roughness: 1.0, // Full roughness for completely matte finish
+      metalness: 0.0, // No metalness - painted surface
     });
-    
+
+    // Ensure mesh has UV2 for AO map
+    if (mesh.geometry.attributes.uv && !mesh.geometry.attributes.uv2) {
+      mesh.geometry.setAttribute("uv2", mesh.geometry.attributes.uv);
+    }
+
     mesh.material = material;
     mesh.castShadow = true;
     console.log(`Applied PBR material to mesh: ${mesh.name}`);
@@ -141,17 +222,29 @@ export class Weapon {
   }
 
   // Update weapon position to stay relative to camera
-  update(deltaTime: number, camera: THREE.Camera, isMoving: boolean = false, currentTime: number = 0): void {
+  update(
+    deltaTime: number,
+    camera: THREE.Camera,
+    isMoving: boolean = false,
+    currentTime: number = 0
+  ): void {
     if (this.isLoaded) {
       // Update ADS transition
       const targetTransition = this.isAiming ? 1 : 0;
       const transitionSpeed = this.aimSpeed * deltaTime;
-      this.aimTransition = THREE.MathUtils.lerp(this.aimTransition, targetTransition, transitionSpeed);
+      this.aimTransition = THREE.MathUtils.lerp(
+        this.aimTransition,
+        targetTransition,
+        transitionSpeed
+      );
 
       // Interpolate between hip and ADS positions
       const hipPosition = this.config.position.clone();
       const adsPosition = this.config.adsPosition.clone();
-      const interpolatedPosition = hipPosition.lerp(adsPosition, this.aimTransition);
+      const interpolatedPosition = hipPosition.lerp(
+        adsPosition,
+        this.aimTransition
+      );
 
       // Interpolate between hip and ADS rotations
       const hipRotation = this.config.rotation.clone();
@@ -171,7 +264,7 @@ export class Weapon {
       const offset = interpolatedPosition.clone();
 
       // Reduce weapon sway when aiming
-      const swayMultiplier = 1 - (this.aimTransition * 0.7); // 70% reduction when fully aimed
+      const swayMultiplier = 1 - this.aimTransition * 0.7; // 70% reduction when fully aimed
       if (isMoving && swayMultiplier > 0) {
         const swayAmount = 0.01 * swayMultiplier;
         const swaySpeed = 8;
@@ -243,18 +336,21 @@ export class WeaponManager {
       console.log(`Adding weapon ${name} to scene`);
       this.scene.add(weapon.getObject());
       this.activeWeapon = weapon;
-      
+
       // Debug: Log weapon position and add wireframe
       const weaponObj = weapon.getObject();
       console.log(`Weapon position:`, weaponObj.position);
       console.log(`Weapon rotation:`, weaponObj.rotation);
       console.log(`Weapon scale:`, weaponObj.scale);
       console.log(`Camera position:`, this.camera.position);
-      
+
       // Debug helpers removed - weapon is working
-      
+
       console.log(`Successfully equipped weapon: ${name}`);
-      console.log(`Weapon object children count:`, weapon.getObject().children.length);
+      console.log(
+        `Weapon object children count:`,
+        weapon.getObject().children.length
+      );
       return true;
     } catch (error) {
       console.error(`Failed to equip weapon ${name}:`, error);
@@ -266,7 +362,11 @@ export class WeaponManager {
     return this.activeWeapon;
   }
 
-  update(deltaTime: number, isMoving: boolean = false, currentTime: number = 0): void {
+  update(
+    deltaTime: number,
+    isMoving: boolean = false,
+    currentTime: number = 0
+  ): void {
     if (this.activeWeapon) {
       this.activeWeapon.update(deltaTime, this.camera, isMoving, currentTime);
     }

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { io } from 'socket.io-client';
 import { RGBELoader } from 'three-stdlib';
 import { WeaponManager } from './weapons/WeaponManager';
-import { LeeEnfieldConfig } from './weapons/configs/LeeEnfield';
+import { FNScarConfig } from './weapons/configs/FNScar';
 
 class Game {
   private scene!: THREE.Scene;
@@ -112,12 +112,12 @@ class Game {
     this.weaponManager = new WeaponManager(this.scene, this.camera);
     
     // Register available weapons
-    this.weaponManager.registerWeapon(LeeEnfieldConfig);
-    
+    this.weaponManager.registerWeapon(FNScarConfig);
+
     // Equip default weapon
     try {
-      await this.weaponManager.equipWeapon('lee_enfield_mk1');
-      console.log('Lee Enfield equipped successfully');
+      await this.weaponManager.equipWeapon('fn_scar');
+      console.log('FN SCAR equipped successfully');
     } catch (error) {
       console.error('Failed to equip weapon:', error);
     }
