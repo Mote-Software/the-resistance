@@ -23,36 +23,55 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'The Resistance server is running' });
 });
 
+// Store player data
+const players: { [id: string]: { position: any; rotation: any } } = {};
+
 // Socket.io connection handling
 io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
-  
-  // Send welcome message
-  socket.emit('welcome', {
-    message: 'Welcome to The Resistance',
-    playerId: socket.id
+
+  // Initialize player with default position
+  players[socket.id] = {
+    position: { x: 0, y: 2.5, z: 5 },
+    rotation: { y: 0 }
+  };
+
+  // Send current players to the newly connected player
+  socket.emit('currentPlayers', players);
+
+  // Notify all other players about the new player
+  socket.broadcast.emit('playerJoined', {
+    id: socket.id,
+    position: players[socket.id].position
   });
 
   // Handle player disconnect
   socket.on('disconnect', () => {
     console.log(`Player disconnected: ${socket.id}`);
+    delete players[socket.id];
+    socket.broadcast.emit('playerLeft', socket.id);
   });
 
-  // Basic player movement sync (placeholder)
-  socket.on('player-move', (data) => {
-    // Broadcast movement to other players
-    socket.broadcast.emit('player-moved', {
-      playerId: socket.id,
-      position: data.position,
-      rotation: data.rotation
-    });
+  // Handle player movement
+  socket.on('playerMove', (data) => {
+    if (players[socket.id]) {
+      players[socket.id].position = data.position;
+      players[socket.id].rotation = data.rotation;
+
+      // Broadcast movement to other players
+      socket.broadcast.emit('playerMoved', {
+        id: socket.id,
+        position: data.position,
+        rotation: data.rotation
+      });
+    }
   });
 
   // Handle player join team
   socket.on('join-team', (team: 'resistance' | 'nazi') => {
     socket.join(team);
     console.log(`Player ${socket.id} joined team: ${team}`);
-    
+
     socket.emit('team-joined', { team });
     io.to(team).emit('team-update', {
       message: `New player joined ${team}`,

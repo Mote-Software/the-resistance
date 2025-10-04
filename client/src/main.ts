@@ -16,6 +16,7 @@ class Game {
   private fpsUpdateTime: number = 0;
   private weaponManager!: WeaponManager;
   private isMoving: boolean = false;
+  private otherPlayers: Map<string, THREE.Mesh> = new Map();
 
   constructor() {
     this.init();
@@ -261,6 +262,93 @@ class Game {
     this.socket.on("disconnect", () => {
       console.log("Disconnected from server");
     });
+
+    // Listen for other players joining
+    this.socket.on("playerJoined", (data: { id: string; position: any }) => {
+      console.log("Player joined:", data.id);
+      this.addOtherPlayer(data.id, data.position);
+    });
+
+    // Listen for other players leaving
+    this.socket.on("playerLeft", (playerId: string) => {
+      console.log("Player left:", playerId);
+      this.removeOtherPlayer(playerId);
+    });
+
+    // Listen for player movement updates
+    this.socket.on(
+      "playerMoved",
+      (data: { id: string; position: any; rotation: any }) => {
+        this.updateOtherPlayer(data.id, data.position, data.rotation);
+      }
+    );
+
+    // Listen for current players when we join
+    this.socket.on("currentPlayers", (players: any) => {
+      Object.keys(players).forEach((id) => {
+        if (id !== this.socket.id) {
+          this.addOtherPlayer(id, players[id].position);
+        }
+      });
+    });
+  }
+
+  private async addOtherPlayer(id: string, position: any) {
+    // Create a simple capsule to represent the other player
+    const geometry = new THREE.CapsuleGeometry(0.5, 1.5, 4, 8);
+    const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+    const playerMesh = new THREE.Mesh(geometry, material);
+
+    // Position at ground level (capsule center, camera is at y=2.5)
+    playerMesh.position.set(position.x, 1.75, position.z);
+    playerMesh.castShadow = true;
+    playerMesh.receiveShadow = true;
+
+    // Load weapon for the other player
+    const weaponManager = new WeaponManager(this.scene, this.camera);
+    weaponManager.registerWeapon(FNScarConfig);
+    try {
+      await weaponManager.equipWeapon("fn_scar");
+      const weapon = weaponManager.getActiveWeapon();
+      if (weapon) {
+        const weaponModel = weapon.getObject();
+        // Position weapon relative to player body (third-person view)
+        weaponModel.position.set(0.5, 0.2, -0.8);
+        weaponModel.rotation.set(0, 0, 0);
+        weaponModel.scale.set(0.003, 0.003, 0.003);
+
+        // Remove from scene since WeaponManager added it there
+        this.scene.remove(weaponModel);
+
+        // Add to player mesh instead
+        playerMesh.add(weaponModel);
+      }
+    } catch (error) {
+      console.error("Failed to load weapon for other player:", error);
+    }
+
+    this.otherPlayers.set(id, playerMesh);
+    this.scene.add(playerMesh);
+  }
+
+  private removeOtherPlayer(id: string) {
+    const playerMesh = this.otherPlayers.get(id);
+    if (playerMesh) {
+      this.scene.remove(playerMesh);
+      playerMesh.geometry.dispose();
+      (playerMesh.material as THREE.Material).dispose();
+      this.otherPlayers.delete(id);
+    }
+  }
+
+  private updateOtherPlayer(id: string, position: any, rotation: any) {
+    const playerMesh = this.otherPlayers.get(id);
+    if (playerMesh) {
+      playerMesh.position.set(position.x, 1.75, position.z);
+      if (rotation) {
+        playerMesh.rotation.y = rotation.y;
+      }
+    }
   }
 
   private setupControls() {
@@ -326,6 +414,18 @@ class Game {
         direction.applyQuaternion(this.camera.quaternion);
         direction.y = 0; // Keep movement on ground level
         this.camera.position.add(direction);
+
+        // Broadcast position to server
+        this.socket.emit("playerMove", {
+          position: {
+            x: this.camera.position.x,
+            y: this.camera.position.y,
+            z: this.camera.position.z,
+          },
+          rotation: {
+            y: this.yaw,
+          },
+        });
       }
     };
   }
