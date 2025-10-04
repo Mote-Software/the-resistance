@@ -352,8 +352,17 @@ class Game {
     const playerMesh = this.otherPlayers.get(id);
     if (playerMesh) {
       this.scene.remove(playerMesh);
-      playerMesh.geometry.dispose();
-      (playerMesh.material as THREE.Material).dispose();
+      // Dispose of all geometries and materials in the group
+      playerMesh.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          if (Array.isArray(child.material)) {
+            child.material.forEach((mat) => mat.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      });
       this.otherPlayers.delete(id);
     }
   }
@@ -468,7 +477,7 @@ class Game {
     };
   }
 
-  private handleMovement(deltaTime: number) {
+  private handleMovement(_deltaTime: number) {
     // Movement handling is set up in setupControls
   }
 
