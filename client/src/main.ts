@@ -134,6 +134,10 @@ class Game {
                 }
               }
             });
+
+            // Enable shadows for all meshes
+            child.castShadow = true;
+            child.receiveShadow = true;
           }
         });
 
