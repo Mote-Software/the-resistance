@@ -16,7 +16,7 @@ class Game {
   private fpsUpdateTime: number = 0;
   private weaponManager!: WeaponManager;
   private isMoving: boolean = false;
-  private otherPlayers: Map<string, THREE.Mesh> = new Map();
+  private otherPlayers: Map<string, THREE.Group> = new Map();
 
   constructor() {
     this.init();
@@ -294,15 +294,32 @@ class Game {
   }
 
   private async addOtherPlayer(id: string, position: any) {
-    // Create a simple capsule to represent the other player
-    const geometry = new THREE.CapsuleGeometry(0.5, 1.5, 4, 8);
-    const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-    const playerMesh = new THREE.Mesh(geometry, material);
+    // Create player body
+    const bodyGeometry = new THREE.CapsuleGeometry(0.5, 1.0, 4, 8);
+    const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xd4c4a8 }); // Beige
+    const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    bodyMesh.position.y = -0.25;
+    bodyMesh.castShadow = true;
+    bodyMesh.receiveShadow = true;
+
+    // Create player head (smaller capsule on top)
+    const headGeometry = new THREE.CapsuleGeometry(0.3, 0.3, 4, 8);
+    const headMaterial = new THREE.MeshStandardMaterial({ color: 0xd4c4a8 }); // Beige
+    const headMesh = new THREE.Mesh(headGeometry, headMaterial);
+    headMesh.position.y = 0.6;
+    headMesh.castShadow = true;
+    headMesh.receiveShadow = true;
+
+    // Create container for player
+    const playerMesh = new THREE.Group();
+    playerMesh.add(bodyMesh);
+    playerMesh.add(headMesh);
+
+    // Store head reference for rotation
+    (playerMesh as any).head = headMesh;
 
     // Position at ground level (capsule center, camera is at y=2.5)
     playerMesh.position.set(position.x, 1.75, position.z);
-    playerMesh.castShadow = true;
-    playerMesh.receiveShadow = true;
 
     // Load weapon for the other player
     const weaponManager = new WeaponManager(this.scene, this.camera);
@@ -313,7 +330,7 @@ class Game {
       if (weapon) {
         const weaponModel = weapon.getObject();
         // Position weapon relative to player body (third-person view)
-        weaponModel.position.set(0.5, 0.2, -0.8);
+        weaponModel.position.set(0.5, 0.2, -0.9);
         weaponModel.rotation.set(0, 0, 0);
         weaponModel.scale.set(0.003, 0.003, 0.003);
 
@@ -346,7 +363,14 @@ class Game {
     if (playerMesh) {
       playerMesh.position.set(position.x, 1.75, position.z);
       if (rotation) {
+        // Rotate body based on yaw
         playerMesh.rotation.y = rotation.y;
+
+        // Rotate head based on pitch
+        const head = (playerMesh as any).head;
+        if (head && rotation.x !== undefined) {
+          head.rotation.x = rotation.x;
+        }
       }
     }
   }
@@ -424,6 +448,7 @@ class Game {
           },
           rotation: {
             y: this.yaw,
+            x: this.pitch,
           },
         });
       }
