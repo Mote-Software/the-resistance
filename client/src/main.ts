@@ -55,7 +55,7 @@ class Game {
     this.createSkybox();
 
     // Add ambient lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.0); // Moderate ambient light
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); // Darker ambient light
     this.scene.add(ambientLight);
 
     // Configure sun light to match sunset position (low angle, warm color)
