@@ -330,15 +330,15 @@ class Game {
       if (weapon) {
         const weaponModel = weapon.getObject();
         // Position weapon relative to player body (third-person view)
-        weaponModel.position.set(0.5, 0.2, -0.9);
+        weaponModel.position.set(0.5, -0.5, -0.9);
         weaponModel.rotation.set(0, 0, 0);
         weaponModel.scale.set(0.003, 0.003, 0.003);
 
         // Remove from scene since WeaponManager added it there
         this.scene.remove(weaponModel);
 
-        // Add to player mesh instead
-        playerMesh.add(weaponModel);
+        // Add to head so weapon rotates with look direction
+        headMesh.add(weaponModel);
       }
     } catch (error) {
       console.error("Failed to load weapon for other player:", error);
@@ -397,6 +397,19 @@ class Game {
         this.camera.quaternion.setFromEuler(
           new THREE.Euler(this.pitch, this.yaw, 0, "YXZ")
         );
+
+        // Broadcast rotation to server
+        this.socket.emit("playerMove", {
+          position: {
+            x: this.camera.position.x,
+            y: this.camera.position.y,
+            z: this.camera.position.z,
+          },
+          rotation: {
+            y: this.yaw,
+            x: this.pitch,
+          },
+        });
       }
     });
 
