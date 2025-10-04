@@ -103,21 +103,21 @@ class Game {
 
             materials.forEach((mat: any, index: number) => {
               if (mat) {
-                const matName = mat.name ? mat.name.toLowerCase() : '';
-                const isWindow = matName.includes('window');
+                const matName = mat.name ? mat.name.toLowerCase() : "";
+                const isWindow = matName.includes("window");
 
                 // Convert to MeshStandardMaterial for better control
                 const newMat = new THREE.MeshStandardMaterial({
                   map: mat.map || null,
                   color: mat.color || 0xffffff,
-                  roughness: isWindow ? 0.0 : 0.95, // Perfectly smooth for windows, rough for others
-                  metalness: isWindow ? 0.8 : 0.0,  // Very metallic for windows
+                  roughness: isWindow ? 0.1 : 0.95, // Perfectly smooth for windows, rough for others
+                  metalness: isWindow ? 0.8 : 0.0, // Very metallic for windows
                   name: mat.name,
                 });
 
                 if (newMat.map) {
                   // Don't repeat doors and windows
-                  if (matName.includes('door') || isWindow) {
+                  if (matName.includes("door") || isWindow) {
                     newMat.map.repeat.set(1, 1); // No repetition
                   } else {
                     newMat.map.repeat.set(3, 3); // Repeat other textures
