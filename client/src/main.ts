@@ -54,8 +54,8 @@ class Game {
     // Add skybox first
     this.createSkybox();
 
-    // Add ambient lighting (much brighter for ground visibility)
-    const ambientLight = new THREE.AmbientLight(0xffffff, 2.5); // Brighter white ambient light
+    // Add ambient lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.0); // Moderate ambient light
     this.scene.add(ambientLight);
 
     // Configure sun light to match sunset position (low angle, warm color)
@@ -94,25 +94,44 @@ class Game {
       (object) => {
         console.log("Town model loaded successfully");
 
-        // Scale textures based on material name
+        // Convert materials and scale textures
         object.traverse((child) => {
           if (child instanceof THREE.Mesh) {
             const materials = Array.isArray(child.material)
               ? child.material
               : [child.material];
 
-            materials.forEach((mat: any) => {
-              if (mat && mat.map) {
+            materials.forEach((mat: any, index: number) => {
+              if (mat) {
                 const matName = mat.name ? mat.name.toLowerCase() : '';
-                // Don't repeat doors and windows
-                if (matName.includes('door') || matName.includes('window')) {
-                  mat.map.repeat.set(1, 1); // No repetition
-                } else {
-                  mat.map.repeat.set(3, 3); // Repeat other textures
+                const isWindow = matName.includes('window');
+
+                // Convert to MeshStandardMaterial for better control
+                const newMat = new THREE.MeshStandardMaterial({
+                  map: mat.map || null,
+                  color: mat.color || 0xffffff,
+                  roughness: isWindow ? 0.0 : 0.95, // Perfectly smooth for windows, rough for others
+                  metalness: isWindow ? 0.8 : 0.0,  // Very metallic for windows
+                  name: mat.name,
+                });
+
+                if (newMat.map) {
+                  // Don't repeat doors and windows
+                  if (matName.includes('door') || isWindow) {
+                    newMat.map.repeat.set(1, 1); // No repetition
+                  } else {
+                    newMat.map.repeat.set(3, 3); // Repeat other textures
+                  }
+                  newMat.map.wrapS = THREE.RepeatWrapping;
+                  newMat.map.wrapT = THREE.RepeatWrapping;
                 }
-                mat.map.wrapS = THREE.RepeatWrapping;
-                mat.map.wrapT = THREE.RepeatWrapping;
-                mat.map.needsUpdate = true;
+
+                // Replace material
+                if (Array.isArray(child.material)) {
+                  child.material[index] = newMat;
+                } else {
+                  child.material = newMat;
+                }
               }
             });
           }
