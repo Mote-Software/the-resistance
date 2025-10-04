@@ -103,9 +103,10 @@ class Game {
 
             materials.forEach((mat: any) => {
               if (mat && mat.map) {
-                // Check if it's a door texture - don't repeat
-                if (mat.name && mat.name.toLowerCase().includes('door')) {
-                  mat.map.repeat.set(1, 1); // No repetition for doors
+                const matName = mat.name ? mat.name.toLowerCase() : '';
+                // Don't repeat doors and windows
+                if (matName.includes('door') || matName.includes('window')) {
+                  mat.map.repeat.set(1, 1); // No repetition
                 } else {
                   mat.map.repeat.set(3, 3); // Repeat other textures
                 }
