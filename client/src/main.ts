@@ -1,8 +1,8 @@
-import * as THREE from 'three';
-import { io } from 'socket.io-client';
-import { RGBELoader, TDSLoader } from 'three-stdlib';
-import { WeaponManager } from './weapons/WeaponManager';
-import { FNScarConfig } from './weapons/configs/FNScar';
+import * as THREE from "three";
+import { io } from "socket.io-client";
+import { RGBELoader, TDSLoader } from "three-stdlib";
+import { WeaponManager } from "./weapons/WeaponManager";
+import { FNScarConfig } from "./weapons/configs/FNScar";
 
 class Game {
   private scene!: THREE.Scene;
@@ -28,20 +28,25 @@ class Game {
 
   private init() {
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    this.camera = new THREE.PerspectiveCamera(
+      60,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setClearColor(0x87CEEB); // Sky blue
-    
+    this.renderer.setClearColor(0x87ceeb); // Sky blue
+
     // Enable shadows for realistic lighting
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows
-    
+
     // Enable HDR tone mapping with balanced exposure
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.45; // Slightly lower to balance sky brightness
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    
+
     document.body.appendChild(this.renderer.domElement);
   }
 
@@ -50,7 +55,7 @@ class Game {
     this.createSkybox();
 
     // Add ambient lighting (much brighter for ground visibility)
-    const ambientLight = new THREE.AmbientLight(0x808080, 1.5); // Much brighter ambient to illuminate ground
+    const ambientLight = new THREE.AmbientLight(0xffffff, 2.5); // Brighter white ambient light
     this.scene.add(ambientLight);
 
     // Configure sun light to match sunset position (low angle, warm color)
@@ -78,63 +83,60 @@ class Game {
   }
 
   private loadTownModel() {
-    console.log('Loading town model...');
-    const loader = new TDSLoader();
-    const textureLoader = new THREE.TextureLoader();
+    console.log("Loading town model...");
 
-    // Load textures
-    const diffuseTexture = textureLoader.load('/assets/textures/environment/Diffuse.jpg');
-    const specularTexture = textureLoader.load('/assets/textures/environment/Specular.jpg');
-    const townTexture1 = textureLoader.load('/assets/textures/environment/Town.jpg');
-    const townTexture2 = textureLoader.load('/assets/textures/environment/Town2.jpg');
-    const townTexture3 = textureLoader.load('/assets/textures/environment/Town3.jpg');
-    const sandTexture = textureLoader.load('/assets/textures/environment/Sand2.jpg');
-    const topTexture = textureLoader.load('/assets/textures/environment/Town - Top.jpg');
+    const loader = new TDSLoader();
+    // Set resource path so it knows where to find textures
+    loader.setResourcePath("/assets/textures/environment/");
 
     loader.load(
-      '/assets/models/environment/Town.3ds',
+      "/assets/models/environment/Town.3ds",
       (object) => {
-        console.log('Town model loaded successfully');
+        console.log("Town model loaded successfully");
 
-        // Apply textures to meshes
+        // Scale textures based on material name
         object.traverse((child) => {
           if (child instanceof THREE.Mesh) {
-            console.log(`Processing mesh: ${child.name}`);
+            const materials = Array.isArray(child.material)
+              ? child.material
+              : [child.material];
 
-            // Create material with textures
-            child.material = new THREE.MeshStandardMaterial({
-              map: diffuseTexture,
-              roughness: 0.8,
-              metalness: 0.2,
+            materials.forEach((mat: any) => {
+              if (mat && mat.map) {
+                // Check if it's a door texture - don't repeat
+                if (mat.name && mat.name.toLowerCase().includes('door')) {
+                  mat.map.repeat.set(1, 1); // No repetition for doors
+                } else {
+                  mat.map.repeat.set(3, 3); // Repeat other textures
+                }
+                mat.map.wrapS = THREE.RepeatWrapping;
+                mat.map.wrapT = THREE.RepeatWrapping;
+                mat.map.needsUpdate = true;
+              }
             });
-
-            child.castShadow = true;
-            child.receiveShadow = true;
           }
         });
 
         // Scale and position the town
-        object.scale.set(0.1, 0.1, 0.1); // Adjust scale as needed
-        object.position.y = 0; // Ground level
+        object.scale.set(0.1, 0.1, 0.1);
+        object.position.y = 0;
 
-        // Rotate to fix orientation (3DS models often need rotation)
-        object.rotation.x = -Math.PI / 2; // Rotate 90 degrees around X axis
+        // Rotate to fix orientation
+        object.rotation.x = -Math.PI / 2;
 
         this.scene.add(object);
-        console.log('Town model added to scene');
+        console.log("Town model added to scene");
       },
       (progress) => {
-        console.log(`Loading progress: ${(progress.loaded / progress.total * 100).toFixed(2)}%`);
+        console.log(
+          `Loading progress: ${(
+            (progress.loaded / progress.total) *
+            100
+          ).toFixed(2)}%`
+        );
       },
       (error) => {
-        console.error('Failed to load town model:', error);
-        // Fallback: create simple ground plane
-        const groundGeometry = new THREE.PlaneGeometry(100, 100);
-        const groundMaterial = new THREE.MeshLambertMaterial({ color: 0xaaaaaa });
-        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-        ground.rotation.x = -Math.PI / 2;
-        ground.receiveShadow = true;
-        this.scene.add(ground);
+        console.error("Failed to load town model:", error);
       }
     );
   }
@@ -142,16 +144,16 @@ class Game {
   private async setupWeapons() {
     // Initialize weapon manager
     this.weaponManager = new WeaponManager(this.scene, this.camera);
-    
+
     // Register available weapons
     this.weaponManager.registerWeapon(FNScarConfig);
 
     // Equip default weapon
     try {
-      await this.weaponManager.equipWeapon('fn_scar');
-      console.log('FN SCAR equipped successfully');
+      await this.weaponManager.equipWeapon("fn_scar");
+      console.log("FN SCAR equipped successfully");
     } catch (error) {
-      console.error('Failed to equip weapon:', error);
+      console.error("Failed to equip weapon:", error);
     }
   }
 
@@ -161,13 +163,13 @@ class Game {
 
     // Create material first
     const skyboxMaterial = new THREE.MeshBasicMaterial({
-      side: THREE.BackSide // Render on inside of sphere
+      side: THREE.BackSide, // Render on inside of sphere
     });
 
     // Load HDR skybox using proper HDR loader
     const hdrLoader = new RGBELoader();
     hdrLoader.load(
-      '/assets/textures/skyboxes/skybox.hdr',
+      "/assets/textures/skyboxes/skybox.hdr",
       (texture) => {
         // Properly configure HDR texture
         texture.mapping = THREE.EquirectangularReflectionMapping;
@@ -185,25 +187,25 @@ class Game {
         pmremGenerator.dispose();
         texture.dispose();
 
-        console.log('Loaded and processed HDR environment map');
+        console.log("Loaded and processed HDR environment map");
       },
       undefined,
       (error) => {
         // Fallback: create procedural gradient skybox
-        console.log('HDR load failed, using procedural skybox:', error);
+        console.log("HDR load failed, using procedural skybox:", error);
 
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement("canvas");
         canvas.width = 2048;
         canvas.height = 1024;
-        const ctx = canvas.getContext('2d')!;
+        const ctx = canvas.getContext("2d")!;
 
         // Create sunset gradient
         const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-        gradient.addColorStop(0, '#87CEEB');    // Sky blue at top
-        gradient.addColorStop(0.3, '#FFA07A');  // Light salmon
-        gradient.addColorStop(0.6, '#FF6347');  // Tomato/orange
-        gradient.addColorStop(0.8, '#FF4500');  // Orange red
-        gradient.addColorStop(1, '#2F1B14');    // Dark brown at bottom
+        gradient.addColorStop(0, "#87CEEB"); // Sky blue at top
+        gradient.addColorStop(0.3, "#FFA07A"); // Light salmon
+        gradient.addColorStop(0.6, "#FF6347"); // Tomato/orange
+        gradient.addColorStop(0.8, "#FF4500"); // Orange red
+        gradient.addColorStop(1, "#2F1B14"); // Dark brown at bottom
 
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -226,57 +228,59 @@ class Game {
   }
 
   private connectToServer() {
-    this.socket = io('http://localhost:3001');
-    
-    this.socket.on('connect', () => {
-      console.log('Connected to server');
+    this.socket = io("http://localhost:3001");
+
+    this.socket.on("connect", () => {
+      console.log("Connected to server");
     });
 
-    this.socket.on('disconnect', () => {
-      console.log('Disconnected from server');
+    this.socket.on("disconnect", () => {
+      console.log("Disconnected from server");
     });
   }
 
   private setupControls() {
     // Request pointer lock on click
-    document.addEventListener('click', () => {
+    document.addEventListener("click", () => {
       document.body.requestPointerLock();
     });
 
     // Handle mouse look when pointer is locked
-    document.addEventListener('mousemove', (event) => {
+    document.addEventListener("mousemove", (event) => {
       if (document.pointerLockElement === document.body) {
         const sensitivity = 0.002;
-        
+
         // Update yaw and pitch angles
         this.yaw -= event.movementX * sensitivity;
         this.pitch -= event.movementY * sensitivity;
-        
+
         // Clamp pitch to prevent over-rotation
-        this.pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, this.pitch));
-        
+        this.pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.pitch));
+
         // Apply rotation using quaternion to avoid gimbal lock
-        this.camera.quaternion.setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
+        this.camera.quaternion.setFromEuler(
+          new THREE.Euler(this.pitch, this.yaw, 0, "YXZ")
+        );
       }
     });
 
     // Basic WASD movement
     const keys: { [key: string]: boolean } = {};
-    
-    document.addEventListener('keydown', (event) => {
+
+    document.addEventListener("keydown", (event) => {
       keys[event.code] = true;
 
       // Handle ADS (Aim Down Sights) with Shift key
-      if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+      if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
         this.weaponManager.startAiming();
       }
     });
 
-    document.addEventListener('keyup', (event) => {
+    document.addEventListener("keyup", (event) => {
       keys[event.code] = false;
 
       // Stop ADS when Shift is released
-      if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+      if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
         this.weaponManager.stopAiming();
       }
     });
@@ -285,15 +289,15 @@ class Game {
     this.handleMovement = (deltaTime: number) => {
       const speed = 5.0; // units per second
       const direction = new THREE.Vector3();
-      
-      if (keys['KeyW']) direction.z -= speed * deltaTime;
-      if (keys['KeyS']) direction.z += speed * deltaTime;
-      if (keys['KeyA']) direction.x -= speed * deltaTime;
-      if (keys['KeyD']) direction.x += speed * deltaTime;
-      
+
+      if (keys["KeyW"]) direction.z -= speed * deltaTime;
+      if (keys["KeyS"]) direction.z += speed * deltaTime;
+      if (keys["KeyA"]) direction.x -= speed * deltaTime;
+      if (keys["KeyD"]) direction.x += speed * deltaTime;
+
       // Track if player is moving for weapon sway
       this.isMoving = direction.length() > 0;
-      
+
       if (this.isMoving) {
         direction.applyQuaternion(this.camera.quaternion);
         direction.y = 0; // Keep movement on ground level
@@ -308,11 +312,13 @@ class Game {
 
   private updateFPS(currentTime: number) {
     this.frameCount++;
-    
+
     // Update FPS every second
     if (currentTime - this.fpsUpdateTime >= 1000) {
-      const fps = Math.round((this.frameCount * 1000) / (currentTime - this.fpsUpdateTime));
-      const fpsElement = document.getElementById('fps');
+      const fps = Math.round(
+        (this.frameCount * 1000) / (currentTime - this.fpsUpdateTime)
+      );
+      const fpsElement = document.getElementById("fps");
       if (fpsElement) {
         fpsElement.textContent = `FPS: ${fps}`;
       }
@@ -323,19 +329,20 @@ class Game {
 
   private animate(currentTime: number = 0) {
     requestAnimationFrame((time) => this.animate(time));
-    
+
     // Calculate delta time in seconds
-    const deltaTime = this.lastTime === 0 ? 0 : (currentTime - this.lastTime) / 1000;
+    const deltaTime =
+      this.lastTime === 0 ? 0 : (currentTime - this.lastTime) / 1000;
     this.lastTime = currentTime;
-    
+
     this.updateFPS(currentTime);
     this.handleMovement(deltaTime);
-    
+
     // Update weapon system
     if (this.weaponManager) {
       this.weaponManager.update(deltaTime, this.isMoving, currentTime * 0.001);
     }
-    
+
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -351,4 +358,4 @@ class Game {
 const game = new Game();
 
 // Handle window resize
-window.addEventListener('resize', () => game.onWindowResize());
+window.addEventListener("resize", () => game.onWindowResize());
