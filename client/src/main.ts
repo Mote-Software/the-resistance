@@ -120,6 +120,8 @@ class Game {
                   // Don't repeat doors and windows
                   if (matName.includes("door") || isWindow) {
                     newMat.map.repeat.set(1, 1); // No repetition
+                  } else if (matName.includes("floor") || matName.includes("ground") || matName.includes("road") || matName.includes("street")) {
+                    newMat.map.repeat.set(20, 20); // High repetition for floor/ground textures
                   } else {
                     newMat.map.repeat.set(3, 3); // Repeat other textures
                   }
