@@ -123,7 +123,12 @@ class Game {
                   // Don't repeat doors and windows
                   if (matName.includes("door") || isWindow) {
                     newMat.map.repeat.set(1, 1); // No repetition
-                  } else if (matName.includes("floor") || matName.includes("ground") || matName.includes("road") || matName.includes("street")) {
+                  } else if (
+                    matName.includes("floor") ||
+                    matName.includes("ground") ||
+                    matName.includes("road") ||
+                    matName.includes("street")
+                  ) {
                     newMat.map.repeat.set(20, 20); // High repetition for floor/ground textures
                   } else {
                     newMat.map.repeat.set(3, 3); // Repeat other textures
@@ -296,6 +301,15 @@ class Game {
         }
       });
     });
+
+    // Listen for other players firing
+    this.socket.on("playerFired", (data: { id: string; position: any }) => {
+      const playerMesh = this.otherPlayers.get(data.id);
+      if (playerMesh) {
+        // Trigger muzzle flash and sound for the other player
+        this.triggerRemotePlayerFire(playerMesh);
+      }
+    });
   }
 
   private async addOtherPlayer(id: string, position: any) {
@@ -322,6 +336,9 @@ class Game {
 
     // Store head reference for rotation
     (playerMesh as any).head = headMesh;
+
+    // Add muzzle flash to weapon
+    this.addMuzzleFlashToPlayer(playerMesh);
 
     // Position at ground level (capsule center, camera is at y=2.5)
     playerMesh.position.set(position.x, 1.75, position.z);
@@ -351,6 +368,84 @@ class Game {
 
     this.otherPlayers.set(id, playerMesh);
     this.scene.add(playerMesh);
+  }
+
+  private addMuzzleFlashToPlayer(playerMesh: THREE.Group) {
+    const head = (playerMesh as any).head;
+    if (!head) return;
+
+    // Create point light for muzzle flash
+    const muzzleFlash = new THREE.PointLight(0xffaa00, 50, 30);
+    muzzleFlash.position.set(0.5, -0.5, -0.9); // Position at weapon barrel relative to head
+    muzzleFlash.visible = false;
+    head.add(muzzleFlash); // Add to head so it rotates with look direction
+
+    // Create muzzle flash sprite
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d")!;
+
+    const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
+    gradient.addColorStop(0.1, "rgba(255, 255, 200, 1)");
+    gradient.addColorStop(0.3, "rgba(255, 200, 100, 0.9)");
+    gradient.addColorStop(0.6, "rgba(255, 150, 0, 0.6)");
+    gradient.addColorStop(1, "rgba(255, 100, 0, 0)");
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 256, 256);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMaterial = new THREE.SpriteMaterial({
+      map: texture,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+      depthWrite: false,
+    });
+
+    const flashSprite = new THREE.Sprite(spriteMaterial);
+    flashSprite.scale.set(0.5, 0.5, 1);
+    flashSprite.position.set(0.5, -0.3, -2); // Same position as light
+    flashSprite.visible = false;
+    flashSprite.renderOrder = 999;
+    head.add(flashSprite); // Add to head so it rotates with look direction
+
+    // Store references
+    (playerMesh as any).muzzleFlash = muzzleFlash;
+    (playerMesh as any).muzzleFlashSprite = flashSprite;
+    (playerMesh as any).muzzleFlashTime = 0;
+
+    // Load gunshot sound
+    const fireSound = new Audio("/assets/sounds/fn_scar_gun.mp3");
+    fireSound.volume = 0.5; // Slightly quieter for other players
+    fireSound.preload = "auto";
+    (playerMesh as any).fireSound = fireSound;
+  }
+
+  private triggerRemotePlayerFire(playerMesh: THREE.Group) {
+    const muzzleFlash = (playerMesh as any).muzzleFlash;
+    const flashSprite = (playerMesh as any).muzzleFlashSprite;
+    const fireSound = (playerMesh as any).fireSound;
+
+    // Show muzzle flash
+    if (muzzleFlash && flashSprite) {
+      muzzleFlash.visible = true;
+      flashSprite.visible = true;
+      (playerMesh as any).muzzleFlashTime = 0.08;
+
+      // Random rotation
+      flashSprite.material.rotation = Math.random() * Math.PI * 2;
+    }
+
+    // Play sound
+    if (fireSound) {
+      const sound = fireSound.cloneNode() as HTMLAudioElement;
+      sound.volume = fireSound.volume;
+      sound
+        .play()
+        .catch((err) => console.warn("Failed to play remote fire sound:", err));
+    }
   }
 
   private removeOtherPlayer(id: string) {
@@ -389,6 +484,21 @@ class Game {
     }
   }
 
+  private updateOtherPlayerEffects(deltaTime: number) {
+    this.otherPlayers.forEach((playerMesh) => {
+      // Update muzzle flash
+      if ((playerMesh as any).muzzleFlashTime > 0) {
+        (playerMesh as any).muzzleFlashTime -= deltaTime;
+        if ((playerMesh as any).muzzleFlashTime <= 0) {
+          const muzzleFlash = (playerMesh as any).muzzleFlash;
+          const flashSprite = (playerMesh as any).muzzleFlashSprite;
+          if (muzzleFlash) muzzleFlash.visible = false;
+          if (flashSprite) flashSprite.visible = false;
+        }
+      }
+    });
+  }
+
   private setupControls() {
     // Request pointer lock on click
     document.addEventListener("click", () => {
@@ -398,6 +508,15 @@ class Game {
       } else {
         // If already locked, fire weapon
         this.weaponManager.fire();
+
+        // Broadcast fire event to other players
+        this.socket.emit("playerFired", {
+          position: {
+            x: this.camera.position.x,
+            y: this.camera.position.y,
+            z: this.camera.position.z,
+          },
+        });
       }
     });
 
@@ -539,8 +658,16 @@ class Game {
 
     // Update weapon system
     if (this.weaponManager) {
-      this.weaponManager.update(deltaTime, this.isMoving, currentTime * 0.001, this.isSprinting);
+      this.weaponManager.update(
+        deltaTime,
+        this.isMoving,
+        currentTime * 0.001,
+        this.isSprinting
+      );
     }
+
+    // Update other player effects (muzzle flash)
+    this.updateOtherPlayerEffects(deltaTime);
 
     this.renderer.render(this.scene, this.camera);
   }

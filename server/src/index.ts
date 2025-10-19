@@ -67,6 +67,15 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Handle player firing weapon
+  socket.on('playerFired', (data) => {
+    // Broadcast fire event to all other players
+    socket.broadcast.emit('playerFired', {
+      id: socket.id,
+      position: data.position
+    });
+  });
+
   // Handle player join team
   socket.on('join-team', (team: 'resistance' | 'nazi') => {
     socket.join(team);
