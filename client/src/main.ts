@@ -438,10 +438,26 @@ class Game {
       flashSprite.material.rotation = Math.random() * Math.PI * 2;
     }
 
-    // Play sound
+    // Play sound with distance-based volume
     if (fireSound) {
+      // Calculate distance from camera to other player
+      const distance = this.camera.position.distanceTo(playerMesh.position);
+
+      // Calculate volume based on distance (inverse square law)
+      // Max volume at close range, fades to 0 at maxDistance
+      const maxDistance = 50; // Distance at which sound is inaudible
+      const minDistance = 5; // Distance at which sound is at max volume
+
+      let volume = 0;
+      if (distance < minDistance) {
+        volume = 0.7; // Max volume for close range
+      } else if (distance < maxDistance) {
+        // Linear falloff (could also use inverse square: 1 / (distance * distance))
+        volume = 0.7 * (1 - (distance - minDistance) / (maxDistance - minDistance));
+      }
+
       const sound = fireSound.cloneNode() as HTMLAudioElement;
-      sound.volume = fireSound.volume;
+      sound.volume = Math.max(0, Math.min(1, volume)); // Clamp between 0 and 1
       sound
         .play()
         .catch((err) => console.warn("Failed to play remote fire sound:", err));
