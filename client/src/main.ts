@@ -392,7 +392,13 @@ class Game {
   private setupControls() {
     // Request pointer lock on click
     document.addEventListener("click", () => {
-      document.body.requestPointerLock();
+      // Request pointer lock if not already locked
+      if (document.pointerLockElement !== document.body) {
+        document.body.requestPointerLock();
+      } else {
+        // If already locked, fire weapon
+        this.weaponManager.fire();
+      }
     });
 
     // Handle mouse look when pointer is locked

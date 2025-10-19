@@ -26,6 +26,13 @@ export class Weapon {
   private isAiming: boolean = false;
   private aimTransition: number = 0; // 0 = hip fire, 1 = ADS
   private aimSpeed: number = 8; // Transition speed
+  private muzzleFlash: THREE.PointLight | null = null;
+  private muzzleFlashSprites: THREE.Sprite[] = [];
+  private muzzleFlashTime: number = 0;
+  private recoilOffset: THREE.Vector3 = new THREE.Vector3();
+  private recoilRotation: THREE.Euler = new THREE.Euler();
+  private recoilRecoverySpeed: number = 10; // How fast recoil recovers
+  private fireSound: HTMLAudioElement | null = null;
 
   constructor(config: WeaponConfig) {
     this.config = config;
@@ -116,6 +123,13 @@ export class Weapon {
           this.group.position.copy(this.config.position);
           this.group.rotation.copy(this.config.rotation);
           this.group.scale.copy(this.config.scale);
+
+          // Create muzzle flash effect
+          this.createMuzzleFlash();
+
+          // Load fire sound
+          this.loadFireSound();
+
           this.isLoaded = true;
           console.log(`Weapon ${this.config.name} loaded and positioned`);
           resolve();
@@ -221,6 +235,185 @@ export class Weapon {
     return this.aimTransition;
   }
 
+  // Create muzzle flash effect
+  private createMuzzleFlash(): void {
+    // Create point light for muzzle flash - much brighter and larger range
+    this.muzzleFlash = new THREE.PointLight(0xffaa00, 50, 30);
+    this.muzzleFlash.position.set(0, 0, -0.8); // Position at barrel end
+    this.muzzleFlash.visible = false;
+    this.group.add(this.muzzleFlash);
+
+    // Create multiple flash sprites for more realistic effect
+    // Sprite 1: Circular flash
+    const circleTexture = this.createCircularFlashTexture();
+    const circleSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: circleTexture,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+      depthWrite: false,
+    }));
+    circleSprite.scale.set(1.2, 1.2, 1);
+    circleSprite.position.set(0, 0, -0.8);
+    circleSprite.visible = false;
+    circleSprite.renderOrder = 999;
+    this.group.add(circleSprite);
+    this.muzzleFlashSprites.push(circleSprite);
+
+    // Sprite 2: Star-shaped flash
+    const starTexture = this.createStarFlashTexture();
+    const starSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: starTexture,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+      depthWrite: false,
+    }));
+    starSprite.scale.set(1.0, 1.0, 1);
+    starSprite.position.set(0, 0, -0.8);
+    starSprite.visible = false;
+    starSprite.renderOrder = 1000;
+    this.group.add(starSprite);
+    this.muzzleFlashSprites.push(starSprite);
+
+    // Sprite 3: Cross-shaped flash
+    const crossTexture = this.createCrossFlashTexture();
+    const crossSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: crossTexture,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+      depthWrite: false,
+    }));
+    crossSprite.scale.set(1.4, 1.4, 1);
+    crossSprite.position.set(0, 0, -0.8);
+    crossSprite.visible = false;
+    crossSprite.renderOrder = 998;
+    this.group.add(crossSprite);
+    this.muzzleFlashSprites.push(crossSprite);
+  }
+
+  private createCircularFlashTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d")!;
+
+    const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
+    gradient.addColorStop(0.1, "rgba(255, 255, 200, 1)");
+    gradient.addColorStop(0.3, "rgba(255, 200, 100, 0.9)");
+    gradient.addColorStop(0.6, "rgba(255, 150, 0, 0.6)");
+    gradient.addColorStop(1, "rgba(255, 100, 0, 0)");
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 256, 256);
+
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  private createStarFlashTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d")!;
+
+    ctx.fillStyle = "rgba(255, 255, 255, 0)";
+    ctx.fillRect(0, 0, 256, 256);
+
+    // Draw star pattern
+    ctx.translate(128, 128);
+    for (let i = 0; i < 6; i++) {
+      const angle = (i * Math.PI) / 3;
+      const gradient = ctx.createLinearGradient(0, 0, Math.cos(angle) * 120, Math.sin(angle) * 120);
+      gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
+      gradient.addColorStop(0.3, "rgba(255, 220, 100, 0.8)");
+      gradient.addColorStop(0.6, "rgba(255, 150, 0, 0.4)");
+      gradient.addColorStop(1, "rgba(255, 100, 0, 0)");
+
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, 120, angle - 0.2, angle + 0.2);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  private createCrossFlashTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d")!;
+
+    ctx.fillStyle = "rgba(255, 255, 255, 0)";
+    ctx.fillRect(0, 0, 256, 256);
+
+    // Draw cross pattern (4 rays)
+    ctx.translate(128, 128);
+    for (let i = 0; i < 4; i++) {
+      const angle = (i * Math.PI) / 2;
+      const gradient = ctx.createLinearGradient(0, 0, Math.cos(angle) * 100, Math.sin(angle) * 100);
+      gradient.addColorStop(0, "rgba(255, 255, 200, 0.9)");
+      gradient.addColorStop(0.4, "rgba(255, 180, 80, 0.6)");
+      gradient.addColorStop(1, "rgba(255, 120, 0, 0)");
+
+      ctx.fillStyle = gradient;
+      ctx.fillRect(
+        Math.cos(angle) * -10 - 15,
+        Math.sin(angle) * -10 - 15,
+        100,
+        30
+      );
+    }
+
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  private loadFireSound(): void {
+    this.fireSound = new Audio('/assets/sounds/fn_scar_gun.mp3');
+    this.fireSound.volume = 0.7; // Adjust volume (0.0 to 1.0)
+    this.fireSound.preload = 'auto';
+  }
+
+  // Fire the weapon
+  fire(): void {
+    if (!this.isLoaded) return;
+
+    // Trigger muzzle flash light
+    if (this.muzzleFlash) {
+      this.muzzleFlash.visible = true;
+      this.muzzleFlashTime = 0.08;
+    }
+
+    // Trigger all muzzle flash sprites with random rotations
+    this.muzzleFlashSprites.forEach((sprite, index) => {
+      sprite.visible = true;
+      sprite.material.rotation = Math.random() * Math.PI * 2;
+
+      // Slight scale variation per sprite
+      const baseScale = [1.2, 1.0, 1.4][index];
+      const randomScale = baseScale * (1.0 + Math.random() * 0.3);
+      sprite.scale.set(randomScale, randomScale, 1);
+    });
+
+    // Play fire sound
+    if (this.fireSound) {
+      // Clone and play to allow rapid fire without cutting off previous sound
+      const sound = this.fireSound.cloneNode() as HTMLAudioElement;
+      sound.volume = this.fireSound.volume;
+      sound.play().catch(err => console.warn('Failed to play fire sound:', err));
+    }
+
+    // Apply recoil
+    const recoilAmount = this.isAiming ? 0.02 : 0.04; // Less recoil when aiming
+    this.recoilOffset.z = recoilAmount; // Push weapon backward (toward player)
+    this.recoilOffset.y = recoilAmount * 0.2; // Slight upward movement
+    this.recoilRotation.x = 0;
+    this.recoilRotation.z = 0;
+
+    console.log("Weapon fired!");
+  }
+
   // Update weapon position to stay relative to camera
   update(
     deltaTime: number,
@@ -261,8 +454,25 @@ export class Weapon {
       const adsScale = this.config.adsScale.clone();
       const interpolatedScale = hipScale.lerp(adsScale, this.aimTransition);
 
+      // Update muzzle flash
+      if (this.muzzleFlashTime > 0) {
+        this.muzzleFlashTime -= deltaTime;
+        if (this.muzzleFlashTime <= 0) {
+          if (this.muzzleFlash) this.muzzleFlash.visible = false;
+          this.muzzleFlashSprites.forEach(sprite => sprite.visible = false);
+        }
+      }
+
+      // Recover from recoil
+      this.recoilOffset.lerp(new THREE.Vector3(0, 0, 0), deltaTime * this.recoilRecoverySpeed);
+      this.recoilRotation.x = THREE.MathUtils.lerp(this.recoilRotation.x, 0, deltaTime * this.recoilRecoverySpeed);
+      this.recoilRotation.z = THREE.MathUtils.lerp(this.recoilRotation.z, 0, deltaTime * this.recoilRecoverySpeed);
+
       // Create world position based on camera position + interpolated offset
       const offset = interpolatedPosition.clone();
+
+      // Apply recoil offset
+      offset.add(this.recoilOffset);
 
       // Reduce weapon sway when aiming, increase when sprinting
       const swayMultiplier = 1 - this.aimTransition * 0.7; // 70% reduction when fully aimed
@@ -281,8 +491,8 @@ export class Weapon {
       // Apply camera rotation plus interpolated weapon rotation
       this.group.rotation.copy(camera.rotation);
       this.group.rotateY(interpolatedRotation.y);
-      this.group.rotateX(interpolatedRotation.x);
-      this.group.rotateZ(interpolatedRotation.z);
+      this.group.rotateX(interpolatedRotation.x + this.recoilRotation.x);
+      this.group.rotateZ(interpolatedRotation.z + this.recoilRotation.z);
 
       // Apply interpolated scale
       this.group.scale.copy(interpolatedScale);
@@ -405,5 +615,12 @@ export class WeaponManager {
 
   getAimTransition(): number {
     return this.activeWeapon ? this.activeWeapon.getAimTransition() : 0;
+  }
+
+  // Fire the active weapon
+  fire(): void {
+    if (this.activeWeapon) {
+      this.activeWeapon.fire();
+    }
   }
 }
