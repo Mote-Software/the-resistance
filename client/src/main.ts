@@ -16,6 +16,9 @@ class Game {
   private fpsUpdateTime: number = 0;
   private weaponManager!: WeaponManager;
   private isMoving: boolean = false;
+  private isSprinting: boolean = false;
+  private lastWKeyPressTime: number = 0;
+  private doubleTapDelay: number = 300; // ms for double-tap detection
   private otherPlayers: Map<string, THREE.Group> = new Map();
 
   constructor() {
@@ -428,7 +431,17 @@ class Game {
     const keys: { [key: string]: boolean } = {};
 
     document.addEventListener("keydown", (event) => {
+      const wasPressed = keys[event.code];
       keys[event.code] = true;
+
+      // Double-tap W detection for sprinting
+      if (event.code === "KeyW" && !wasPressed) {
+        const currentTime = Date.now();
+        if (currentTime - this.lastWKeyPressTime < this.doubleTapDelay) {
+          this.isSprinting = true;
+        }
+        this.lastWKeyPressTime = currentTime;
+      }
 
       // Handle ADS (Aim Down Sights) with Shift key
       if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
@@ -439,6 +452,11 @@ class Game {
     document.addEventListener("keyup", (event) => {
       keys[event.code] = false;
 
+      // Stop sprinting when W is released
+      if (event.code === "KeyW") {
+        this.isSprinting = false;
+      }
+
       // Stop ADS when Shift is released
       if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
         this.weaponManager.stopAiming();
@@ -447,7 +465,9 @@ class Game {
 
     // Handle movement in animation loop
     this.handleMovement = (deltaTime: number) => {
-      const speed = 5.0; // units per second
+      const baseSpeed = 7.0; // Increased base speed from 5.0
+      const sprintMultiplier = 1.6; // Sprint is 60% faster
+      const speed = this.isSprinting ? baseSpeed * sprintMultiplier : baseSpeed;
       const direction = new THREE.Vector3();
 
       if (keys["KeyW"]) direction.z -= speed * deltaTime;
@@ -513,7 +533,7 @@ class Game {
 
     // Update weapon system
     if (this.weaponManager) {
-      this.weaponManager.update(deltaTime, this.isMoving, currentTime * 0.001);
+      this.weaponManager.update(deltaTime, this.isMoving, currentTime * 0.001, this.isSprinting);
     }
 
     this.renderer.render(this.scene, this.camera);

@@ -226,7 +226,8 @@ export class Weapon {
     deltaTime: number,
     camera: THREE.Camera,
     isMoving: boolean = false,
-    currentTime: number = 0
+    currentTime: number = 0,
+    isSprinting: boolean = false
   ): void {
     if (this.isLoaded) {
       // Update ADS transition
@@ -263,11 +264,12 @@ export class Weapon {
       // Create world position based on camera position + interpolated offset
       const offset = interpolatedPosition.clone();
 
-      // Reduce weapon sway when aiming
+      // Reduce weapon sway when aiming, increase when sprinting
       const swayMultiplier = 1 - this.aimTransition * 0.7; // 70% reduction when fully aimed
+      const sprintMultiplier = isSprinting ? 2.5 : 1; // 2.5x more sway when sprinting
       if (isMoving && swayMultiplier > 0) {
-        const swayAmount = 0.01 * swayMultiplier;
-        const swaySpeed = 8;
+        const swayAmount = 0.01 * swayMultiplier * sprintMultiplier;
+        const swaySpeed = isSprinting ? 12 : 8; // Faster sway when sprinting
         offset.x += Math.sin(currentTime * swaySpeed) * swayAmount;
         offset.y += Math.sin(currentTime * swaySpeed * 2) * swayAmount * 0.5;
         offset.z += Math.cos(currentTime * swaySpeed) * swayAmount * 0.3;
@@ -285,11 +287,17 @@ export class Weapon {
       // Apply interpolated scale
       this.group.scale.copy(interpolatedScale);
 
-      // Add subtle rotation sway when moving (reduced when aiming)
+      // Add subtle rotation sway when moving (reduced when aiming, enhanced when sprinting)
       if (isMoving && swayMultiplier > 0) {
-        const rotSway = 0.005 * swayMultiplier;
-        this.group.rotateZ(Math.sin(currentTime * 6) * rotSway);
-        this.group.rotateX(Math.cos(currentTime * 8) * rotSway * 0.5);
+        const rotSway = 0.005 * swayMultiplier * sprintMultiplier;
+        const rotSpeed = isSprinting ? 10 : 6; // Faster rotation when sprinting
+        this.group.rotateZ(Math.sin(currentTime * rotSpeed) * rotSway);
+        this.group.rotateX(Math.cos(currentTime * (rotSpeed * 1.3)) * rotSway * 0.5);
+
+        // Additional roll rotation when sprinting for more dynamic feel
+        if (isSprinting) {
+          this.group.rotateY(Math.sin(currentTime * rotSpeed * 0.5) * rotSway * 0.3);
+        }
       }
     }
   }
@@ -365,10 +373,11 @@ export class WeaponManager {
   update(
     deltaTime: number,
     isMoving: boolean = false,
-    currentTime: number = 0
+    currentTime: number = 0,
+    isSprinting: boolean = false
   ): void {
     if (this.activeWeapon) {
-      this.activeWeapon.update(deltaTime, this.camera, isMoving, currentTime);
+      this.activeWeapon.update(deltaTime, this.camera, isMoving, currentTime, isSprinting);
     }
   }
 
