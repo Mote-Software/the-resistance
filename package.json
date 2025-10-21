@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "cd client && pnpm run dev",
     "build": "cd client && pnpm run build",
+    "build:client": "cd client && pnpm run build",
     "preview": "cd client && pnpm run preview"
-  }
+  },
+  "packageManager": "pnpm@10.11.0"
 }
