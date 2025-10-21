@@ -22,11 +22,11 @@ class Game {
   private otherPlayers: Map<string, THREE.Group> = new Map();
   private gameStarted: boolean = false;
   private lastNetworkUpdate: number = 0;
-  private networkUpdateInterval: number = 100; // Send updates every 100ms (10 times per second)
+  private networkUpdateInterval: number = 50; // Send updates every 50ms (20 times per second)
   private lastPosition: THREE.Vector3 = new THREE.Vector3();
   private lastRotation: { x: number; y: number } = { x: 0, y: 0 };
-  private positionThreshold: number = 0.1; // Only send if moved more than 0.1 units
-  private rotationThreshold: number = 0.05; // Only send if rotated more than 0.05 radians
+  private positionThreshold: number = 0.05; // Send if moved more than 0.05 units (reduced)
+  private rotationThreshold: number = 0.02; // Send if rotated more than 0.02 radians (reduced)
 
   constructor() {
     this.init();
