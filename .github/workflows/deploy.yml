@@ -34,8 +34,11 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: "pnpm"
 
-      - name: Install dependencies
+      - name: Install root dependencies
         run: pnpm install --no-frozen-lockfile
+
+      - name: Install client dependencies
+        run: cd client && pnpm install --no-frozen-lockfile
 
       - name: Build client
         run: pnpm run build:client
