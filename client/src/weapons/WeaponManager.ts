@@ -26,9 +26,6 @@ export class Weapon {
   private isAiming: boolean = false;
   private aimTransition: number = 0; // 0 = hip fire, 1 = ADS
   private aimSpeed: number = 8; // Transition speed
-  private muzzleFlash: THREE.PointLight | null = null;
-  private muzzleFlashSprites: THREE.Sprite[] = [];
-  private muzzleFlashTime: number = 0;
   private recoilOffset: THREE.Vector3 = new THREE.Vector3();
   private recoilRotation: THREE.Euler = new THREE.Euler();
   private recoilRecoverySpeed: number = 10; // How fast recoil recovers
@@ -123,9 +120,6 @@ export class Weapon {
           this.group.position.copy(this.config.position);
           this.group.rotation.copy(this.config.rotation);
           this.group.scale.copy(this.config.scale);
-
-          // Create muzzle flash effect
-          this.createMuzzleFlash();
 
           // Load fire sound
           this.loadFireSound();
@@ -235,49 +229,6 @@ export class Weapon {
     return this.aimTransition;
   }
 
-  // Create muzzle flash effect (optimized)
-  private createMuzzleFlash(): void {
-    // Create point light for muzzle flash - reduced intensity and range for better performance
-    this.muzzleFlash = new THREE.PointLight(0xffaa00, 20, 15);
-    this.muzzleFlash.position.set(0, 0, -0.8); // Position at barrel end
-    this.muzzleFlash.visible = false;
-    this.group.add(this.muzzleFlash);
-
-    // Create single optimized flash sprite instead of 3
-    const flashTexture = this.createCircularFlashTexture();
-    const flashSprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: flashTexture,
-      blending: THREE.AdditiveBlending,
-      transparent: true,
-      depthWrite: false,
-    }));
-    flashSprite.scale.set(1.0, 1.0, 1);
-    flashSprite.position.set(0, 0, -0.8);
-    flashSprite.visible = false;
-    flashSprite.renderOrder = 999;
-    this.group.add(flashSprite);
-    this.muzzleFlashSprites.push(flashSprite);
-  }
-
-  private createCircularFlashTexture(): THREE.CanvasTexture {
-    const canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 256;
-    const ctx = canvas.getContext("2d")!;
-
-    const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-    gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
-    gradient.addColorStop(0.1, "rgba(255, 255, 200, 1)");
-    gradient.addColorStop(0.3, "rgba(255, 200, 100, 0.9)");
-    gradient.addColorStop(0.6, "rgba(255, 150, 0, 0.6)");
-    gradient.addColorStop(1, "rgba(255, 100, 0, 0)");
-
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 256, 256);
-
-    return new THREE.CanvasTexture(canvas);
-  }
-
   private createStarFlashTexture(): THREE.CanvasTexture {
     const canvas = document.createElement("canvas");
     canvas.width = 256;
@@ -291,7 +242,12 @@ export class Weapon {
     ctx.translate(128, 128);
     for (let i = 0; i < 6; i++) {
       const angle = (i * Math.PI) / 3;
-      const gradient = ctx.createLinearGradient(0, 0, Math.cos(angle) * 120, Math.sin(angle) * 120);
+      const gradient = ctx.createLinearGradient(
+        0,
+        0,
+        Math.cos(angle) * 120,
+        Math.sin(angle) * 120
+      );
       gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
       gradient.addColorStop(0.3, "rgba(255, 220, 100, 0.8)");
       gradient.addColorStop(0.6, "rgba(255, 150, 0, 0.4)");
@@ -321,7 +277,12 @@ export class Weapon {
     ctx.translate(128, 128);
     for (let i = 0; i < 4; i++) {
       const angle = (i * Math.PI) / 2;
-      const gradient = ctx.createLinearGradient(0, 0, Math.cos(angle) * 100, Math.sin(angle) * 100);
+      const gradient = ctx.createLinearGradient(
+        0,
+        0,
+        Math.cos(angle) * 100,
+        Math.sin(angle) * 100
+      );
       gradient.addColorStop(0, "rgba(255, 255, 200, 0.9)");
       gradient.addColorStop(0.4, "rgba(255, 180, 80, 0.6)");
       gradient.addColorStop(1, "rgba(255, 120, 0, 0)");
@@ -339,36 +300,23 @@ export class Weapon {
   }
 
   private loadFireSound(): void {
-    this.fireSound = new Audio('/assets/sounds/fn_scar_gun.mp3');
+    this.fireSound = new Audio("/assets/sounds/fn_scar_gun.mp3");
     this.fireSound.volume = 0.7; // Adjust volume (0.0 to 1.0)
-    this.fireSound.preload = 'auto';
+    this.fireSound.preload = "auto";
   }
 
-  // Fire the weapon (optimized)
+  // Fire the weapon
   fire(): void {
     if (!this.isLoaded) return;
-
-    // Trigger muzzle flash light
-    if (this.muzzleFlash) {
-      this.muzzleFlash.visible = true;
-      this.muzzleFlashTime = 0.06; // Reduced from 0.08 for snappier feel
-    }
-
-    // Trigger single muzzle flash sprite with random rotation
-    if (this.muzzleFlashSprites.length > 0) {
-      const sprite = this.muzzleFlashSprites[0];
-      sprite.visible = true;
-      sprite.material.rotation = Math.random() * Math.PI * 2;
-      const randomScale = 1.0 + Math.random() * 0.2;
-      sprite.scale.set(randomScale, randomScale, 1);
-    }
 
     // Play fire sound
     if (this.fireSound) {
       // Clone and play to allow rapid fire without cutting off previous sound
       const sound = this.fireSound.cloneNode() as HTMLAudioElement;
       sound.volume = this.fireSound.volume;
-      sound.play().catch(err => console.warn('Failed to play fire sound:', err));
+      sound
+        .play()
+        .catch((err) => console.warn("Failed to play fire sound:", err));
     }
 
     // Apply recoil
@@ -419,19 +367,21 @@ export class Weapon {
       const adsScale = this.config.adsScale.clone();
       const interpolatedScale = hipScale.lerp(adsScale, this.aimTransition);
 
-      // Update muzzle flash
-      if (this.muzzleFlashTime > 0) {
-        this.muzzleFlashTime -= deltaTime;
-        if (this.muzzleFlashTime <= 0) {
-          if (this.muzzleFlash) this.muzzleFlash.visible = false;
-          this.muzzleFlashSprites.forEach(sprite => sprite.visible = false);
-        }
-      }
-
       // Recover from recoil
-      this.recoilOffset.lerp(new THREE.Vector3(0, 0, 0), deltaTime * this.recoilRecoverySpeed);
-      this.recoilRotation.x = THREE.MathUtils.lerp(this.recoilRotation.x, 0, deltaTime * this.recoilRecoverySpeed);
-      this.recoilRotation.z = THREE.MathUtils.lerp(this.recoilRotation.z, 0, deltaTime * this.recoilRecoverySpeed);
+      this.recoilOffset.lerp(
+        new THREE.Vector3(0, 0, 0),
+        deltaTime * this.recoilRecoverySpeed
+      );
+      this.recoilRotation.x = THREE.MathUtils.lerp(
+        this.recoilRotation.x,
+        0,
+        deltaTime * this.recoilRecoverySpeed
+      );
+      this.recoilRotation.z = THREE.MathUtils.lerp(
+        this.recoilRotation.z,
+        0,
+        deltaTime * this.recoilRecoverySpeed
+      );
 
       // Create world position based on camera position + interpolated offset
       const offset = interpolatedPosition.clone();
@@ -467,11 +417,15 @@ export class Weapon {
         const rotSway = 0.005 * swayMultiplier * sprintMultiplier;
         const rotSpeed = isSprinting ? 10 : 6; // Faster rotation when sprinting
         this.group.rotateZ(Math.sin(currentTime * rotSpeed) * rotSway);
-        this.group.rotateX(Math.cos(currentTime * (rotSpeed * 1.3)) * rotSway * 0.5);
+        this.group.rotateX(
+          Math.cos(currentTime * (rotSpeed * 1.3)) * rotSway * 0.5
+        );
 
         // Additional roll rotation when sprinting for more dynamic feel
         if (isSprinting) {
-          this.group.rotateY(Math.sin(currentTime * rotSpeed * 0.5) * rotSway * 0.3);
+          this.group.rotateY(
+            Math.sin(currentTime * rotSpeed * 0.5) * rotSway * 0.3
+          );
         }
       }
     }
@@ -483,10 +437,50 @@ export class WeaponManager {
   private activeWeapon: Weapon | null = null;
   private scene: THREE.Scene;
   private camera: THREE.Camera;
+  private muzzleFlashSprite: THREE.Sprite | null = null;
 
   constructor(scene: THREE.Scene, camera: THREE.Camera) {
     this.scene = scene;
     this.camera = camera;
+    this.createMuzzleFlashOverlay();
+  }
+
+  private createMuzzleFlashOverlay(): void {
+    // Create a simple screen-space muzzle flash overlay
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d")!;
+
+    // Bright orange/yellow gradient
+    const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
+    gradient.addColorStop(0.3, "rgba(255, 220, 100, 1)");
+    gradient.addColorStop(0.7, "rgba(255, 150, 0, 0.8)");
+    gradient.addColorStop(1, "rgba(255, 100, 0, 0)");
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 256, 256);
+
+    const texture = new THREE.CanvasTexture(canvas);
+
+    this.muzzleFlashSprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: texture,
+        blending: THREE.AdditiveBlending,
+        transparent: true,
+        depthTest: true, // Enable depth test so gun renders in front
+        depthWrite: false,
+      })
+    );
+
+    this.muzzleFlashSprite.scale.set(0.7, 0.7, 5); // Bigger flash
+    this.muzzleFlashSprite.renderOrder = 0; // Normal render order
+    this.muzzleFlashSprite.visible = false;
+
+    // Add directly to scene
+    this.scene.add(this.muzzleFlashSprite);
+    console.log("Muzzle flash overlay created and added to scene");
   }
 
   registerWeapon(config: WeaponConfig): void {
@@ -552,7 +546,30 @@ export class WeaponManager {
     isSprinting: boolean = false
   ): void {
     if (this.activeWeapon) {
-      this.activeWeapon.update(deltaTime, this.camera, isMoving, currentTime, isSprinting);
+      this.activeWeapon.update(
+        deltaTime,
+        this.camera,
+        isMoving,
+        currentTime,
+        isSprinting
+      );
+
+      // Update muzzle flash position to stay in front of camera
+      if (this.muzzleFlashSprite && this.activeWeapon) {
+        const aimTransition = this.activeWeapon.getAimTransition();
+
+        // Different positions for hip fire vs ADS
+        const hipPosition = new THREE.Vector3(0.3, -0.3, -3);
+        const adsPosition = new THREE.Vector3(0, -0.1, -2.5); // Centered and closer when aiming
+
+        // Interpolate between hip and ADS positions
+        const flashOffset = hipPosition.lerp(adsPosition, aimTransition);
+        flashOffset.applyQuaternion(this.camera.quaternion);
+        this.muzzleFlashSprite.position
+          .copy(this.camera.position)
+          .add(flashOffset);
+        this.muzzleFlashSprite.quaternion.copy(this.camera.quaternion);
+      }
     }
   }
 
@@ -586,6 +603,16 @@ export class WeaponManager {
   fire(): void {
     if (this.activeWeapon) {
       this.activeWeapon.fire();
+
+      // Show muzzle flash overlay
+      if (this.muzzleFlashSprite) {
+        this.muzzleFlashSprite.visible = true;
+        setTimeout(() => {
+          if (this.muzzleFlashSprite) {
+            this.muzzleFlashSprite.visible = false;
+          }
+        }, 60); // 60ms flash duration
+      }
     }
   }
 }

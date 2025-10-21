@@ -44,8 +44,14 @@ class Game {
       0.1,
       1000
     );
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: false,
+      powerPreference: "high-performance",
+    });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    // Cap pixel ratio at 2 for performance while maintaining quality
+    // devicePixelRatio of 3+ (like some 4K displays) is overkill
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setClearColor(0x87ceeb); // Sky blue
 
     // Enable shadows for realistic lighting
@@ -278,7 +284,9 @@ class Game {
     const joinSubmitBtn = document.getElementById("joinSubmitBtn")!;
     const backBtn = document.getElementById("backBtn")!;
     const roomCodeDisplay = document.getElementById("roomCodeDisplay")!;
-    const roomCodeInput = document.getElementById("roomCodeInput") as HTMLInputElement;
+    const roomCodeInput = document.getElementById(
+      "roomCodeInput"
+    ) as HTMLInputElement;
 
     // Create room button
     createRoomBtn.addEventListener("click", async () => {
@@ -408,9 +416,14 @@ class Game {
 
     // Check if position or rotation changed significantly
     const positionDelta = this.camera.position.distanceTo(this.lastPosition);
-    const rotationDelta = Math.abs(this.pitch - this.lastRotation.x) + Math.abs(this.yaw - this.lastRotation.y);
+    const rotationDelta =
+      Math.abs(this.pitch - this.lastRotation.x) +
+      Math.abs(this.yaw - this.lastRotation.y);
 
-    return positionDelta > this.positionThreshold || rotationDelta > this.rotationThreshold;
+    return (
+      positionDelta > this.positionThreshold ||
+      rotationDelta > this.rotationThreshold
+    );
   }
 
   private sendNetworkUpdate() {
@@ -440,7 +453,7 @@ class Game {
     const bodyMaterial = new THREE.MeshStandardMaterial({
       color: 0xd4c4a8,
       roughness: 0.8,
-      metalness: 0.0
+      metalness: 0.0,
     });
     const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
     bodyMesh.position.y = -0.25;
@@ -452,7 +465,7 @@ class Game {
     const headMaterial = new THREE.MeshStandardMaterial({
       color: 0xd4c4a8,
       roughness: 0.8,
-      metalness: 0.0
+      metalness: 0.0,
     });
     const headMesh = new THREE.Mesh(headGeometry, headMaterial);
     headMesh.position.y = 0.6;
@@ -504,15 +517,12 @@ class Game {
     const head = (playerMesh as any).head;
     if (!head) return;
 
-    // Create point light for muzzle flash (reduced intensity and range)
-    const muzzleFlash = new THREE.PointLight(0xffaa00, 15, 10);
-    muzzleFlash.position.set(0.5, -0.5, -0.9); // Position at weapon barrel relative to head
-    muzzleFlash.visible = false;
-    head.add(muzzleFlash); // Add to head so it rotates with look direction
+    // Skip point light for performance - they cause massive lag from shadow updates
+    // Just use sprite which is much lighter
 
-    // Create smaller muzzle flash sprite (reduced resolution)
+    // Create muzzle flash sprite only
     const canvas = document.createElement("canvas");
-    canvas.width = 128; // Reduced from 256
+    canvas.width = 128;
     canvas.height = 128;
     const ctx = canvas.getContext("2d")!;
 
@@ -533,14 +543,14 @@ class Game {
     });
 
     const flashSprite = new THREE.Sprite(spriteMaterial);
-    flashSprite.scale.set(0.4, 0.4, 1); // Reduced from 0.5
-    flashSprite.position.set(0.5, -0.3, -2);
+    flashSprite.scale.set(0.6, 0.6, 1); // Match your weapon flash size
+    flashSprite.position.set(0.5, -0.25, -2); // Adjusted to weapon barrel position
     flashSprite.visible = false;
     flashSprite.renderOrder = 999;
     head.add(flashSprite);
 
-    // Store references
-    (playerMesh as any).muzzleFlash = muzzleFlash;
+    // Store references (no muzzleFlash light)
+    (playerMesh as any).muzzleFlash = null;
     (playerMesh as any).muzzleFlashSprite = flashSprite;
     (playerMesh as any).muzzleFlashTime = 0;
 
@@ -552,18 +562,18 @@ class Game {
   }
 
   private triggerRemotePlayerFire(playerMesh: THREE.Group) {
-    const muzzleFlash = (playerMesh as any).muzzleFlash;
     const flashSprite = (playerMesh as any).muzzleFlashSprite;
     const fireSound = (playerMesh as any).fireSound;
 
-    // Show muzzle flash (shorter duration)
-    if (muzzleFlash && flashSprite) {
-      muzzleFlash.visible = true;
+    // Show muzzle flash sprite only (no light for performance)
+    if (flashSprite) {
       flashSprite.visible = true;
-      (playerMesh as any).muzzleFlashTime = 0.05; // Reduced from 0.08
+      (playerMesh as any).muzzleFlashTime = 0.05;
 
-      // Random rotation
+      // Random rotation and scale
       flashSprite.material.rotation = Math.random() * Math.PI * 2;
+      const randomScale = 0.5 + Math.random() * 0.2;
+      flashSprite.scale.set(randomScale, randomScale, 1);
     }
 
     // Play sound with distance-based volume
@@ -581,7 +591,8 @@ class Game {
         volume = 0.7; // Max volume for close range
       } else if (distance < maxDistance) {
         // Linear falloff (could also use inverse square: 1 / (distance * distance))
-        volume = 0.7 * (1 - (distance - minDistance) / (maxDistance - minDistance));
+        volume =
+          0.7 * (1 - (distance - minDistance) / (maxDistance - minDistance));
       }
 
       const sound = fireSound.cloneNode() as HTMLAudioElement;
@@ -630,13 +641,11 @@ class Game {
 
   private updateOtherPlayerEffects(deltaTime: number) {
     this.otherPlayers.forEach((playerMesh) => {
-      // Update muzzle flash
+      // Update muzzle flash (sprite only, no light)
       if ((playerMesh as any).muzzleFlashTime > 0) {
         (playerMesh as any).muzzleFlashTime -= deltaTime;
         if ((playerMesh as any).muzzleFlashTime <= 0) {
-          const muzzleFlash = (playerMesh as any).muzzleFlash;
           const flashSprite = (playerMesh as any).muzzleFlashSprite;
-          if (muzzleFlash) muzzleFlash.visible = false;
           if (flashSprite) flashSprite.visible = false;
         }
       }
