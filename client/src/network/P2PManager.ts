@@ -7,8 +7,11 @@ export type PlayerData = {
 
 export type MessageType =
   | { type: "playerMove"; data: PlayerData }
+  | { type: "playerMoved"; data: { id: string } & PlayerData }
   | { type: "playerFired"; data: { position: { x: number; y: number; z: number } } }
+  | { type: "playerFiredRemote"; data: { id: string; position: { x: number; y: number; z: number } } }
   | { type: "playerJoined"; data: { id: string; position: any } }
+  | { type: "playerLeft"; data: { id: string } }
   | { type: "currentPlayers"; data: { [id: string]: PlayerData } };
 
 export class P2PManager {
@@ -174,9 +177,9 @@ export class P2PManager {
       // Notify other players if we're host
       if (this.isHost) {
         this.broadcast({
-          type: "playerLeft" as any,
-          data: peerId,
-        } as any);
+          type: "playerLeft",
+          data: { id: peerId },
+        });
       }
 
       if (this.onPlayerLeft) this.onPlayerLeft(peerId);
@@ -200,12 +203,12 @@ export class P2PManager {
         if (this.isHost) {
           this.broadcast(
             {
-              type: "playerMoved" as any,
+              type: "playerMoved",
               data: {
                 id: peerId,
                 ...message.data,
               },
-            } as any,
+            },
             peerId
           );
         }
@@ -216,17 +219,32 @@ export class P2PManager {
         }
         break;
 
+      case "playerMoved":
+        // Received from host - update the specific player
+        const movedPlayerId = message.data.id;
+        const movedPlayerData: PlayerData = {
+          position: message.data.position,
+          rotation: message.data.rotation,
+        };
+        this.players.set(movedPlayerId, movedPlayerData);
+
+        // Notify application
+        if (this.onPlayerMoved) {
+          this.onPlayerMoved(movedPlayerId, movedPlayerData);
+        }
+        break;
+
       case "playerFired":
         // If we're host, broadcast to all other players
         if (this.isHost) {
           this.broadcast(
             {
-              type: "playerFired",
+              type: "playerFiredRemote",
               data: {
                 id: peerId,
                 position: message.data.position,
               },
-            } as any,
+            },
             peerId
           );
         }
@@ -234,6 +252,13 @@ export class P2PManager {
         // Notify application
         if (this.onPlayerFired) {
           this.onPlayerFired(peerId, message.data.position);
+        }
+        break;
+
+      case "playerFiredRemote":
+        // Received from host - notify about remote player firing
+        if (this.onPlayerFired) {
+          this.onPlayerFired(message.data.id, message.data.position);
         }
         break;
 
@@ -251,14 +276,23 @@ export class P2PManager {
 
       case "playerJoined":
         // Received from host about new player
-        const newPlayerId = (message.data as any).id;
+        const newPlayerId = message.data.id;
         const playerData: PlayerData = {
-          position: (message.data as any).position,
+          position: message.data.position,
           rotation: { x: 0, y: 0 },
         };
         this.players.set(newPlayerId, playerData);
         if (this.onPlayerJoined) {
           this.onPlayerJoined(newPlayerId, playerData);
+        }
+        break;
+
+      case "playerLeft":
+        // Received from host about player leaving
+        const leftPlayerId = message.data.id;
+        this.players.delete(leftPlayerId);
+        if (this.onPlayerLeft) {
+          this.onPlayerLeft(leftPlayerId);
         }
         break;
     }
