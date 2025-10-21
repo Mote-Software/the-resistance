@@ -62,9 +62,96 @@
         height: 4px;
         transform: translateX(-50%);
       }
+      #lobby {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.9);
+        padding: 40px;
+        border-radius: 10px;
+        border: 2px solid #ff4500;
+        color: white;
+        z-index: 1000;
+        text-align: center;
+        min-width: 400px;
+      }
+      #lobby h1 {
+        margin: 0 0 30px 0;
+        color: #ff4500;
+        font-size: 32px;
+        text-transform: uppercase;
+      }
+      #lobby button {
+        background: #ff4500;
+        color: white;
+        border: none;
+        padding: 15px 30px;
+        font-size: 16px;
+        cursor: pointer;
+        border-radius: 5px;
+        margin: 10px;
+        text-transform: uppercase;
+        font-weight: bold;
+        transition: background 0.3s;
+      }
+      #lobby button:hover {
+        background: #ff6347;
+      }
+      #lobby input {
+        background: rgba(255, 255, 255, 0.1);
+        border: 2px solid #ff4500;
+        color: white;
+        padding: 15px;
+        font-size: 16px;
+        border-radius: 5px;
+        width: 100%;
+        margin: 10px 0;
+        text-align: center;
+        text-transform: uppercase;
+        font-weight: bold;
+      }
+      #lobby input::placeholder {
+        color: rgba(255, 255, 255, 0.5);
+      }
+      #lobby .room-code {
+        background: rgba(255, 69, 0, 0.2);
+        padding: 20px;
+        border-radius: 5px;
+        margin: 20px 0;
+        font-size: 24px;
+        letter-spacing: 4px;
+        font-weight: bold;
+        color: #ff4500;
+      }
+      #lobby .instructions {
+        margin: 20px 0;
+        font-size: 14px;
+        color: rgba(255, 255, 255, 0.7);
+      }
+      .hidden {
+        display: none !important;
+      }
     </style>
   </head>
   <body>
+    <div id="lobby">
+      <h1>The Resistance</h1>
+      <div id="lobbyMenu">
+        <button id="createRoomBtn">Create Room</button>
+        <button id="joinRoomBtn">Join Room</button>
+      </div>
+      <div id="hostView" class="hidden">
+        <div class="room-code" id="roomCodeDisplay"></div>
+        <div class="instructions">Share this code with your friends to let them join!</div>
+        <button id="startGameBtn">Start Game</button>
+      </div>
+      <div id="joinView" class="hidden">
+        <input type="text" id="roomCodeInput" placeholder="Enter Room Code" maxlength="6" />
+        <button id="joinSubmitBtn">Join</button>
+        <button id="backBtn">Back</button>
+      </div>
+    </div>
     <div id="ui">
       <div>The Resistance - FPS Game</div>
     </div>

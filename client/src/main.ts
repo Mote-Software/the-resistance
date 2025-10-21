@@ -1,14 +1,14 @@
 import * as THREE from "three";
-import { io } from "socket.io-client";
 import { RGBELoader, TDSLoader } from "three-stdlib";
 import { WeaponManager } from "./weapons/WeaponManager";
 import { FNScarConfig } from "./weapons/configs/FNScar";
+import { P2PManager } from "./network/P2PManager";
 
 class Game {
   private scene!: THREE.Scene;
   private camera!: THREE.PerspectiveCamera;
   private renderer!: THREE.WebGLRenderer;
-  private socket: any;
+  private p2pManager!: P2PManager;
   private yaw: number = 0;
   private pitch: number = 0;
   private lastTime: number = 0;
@@ -20,14 +20,20 @@ class Game {
   private lastWKeyPressTime: number = 0;
   private doubleTapDelay: number = 300; // ms for double-tap detection
   private otherPlayers: Map<string, THREE.Group> = new Map();
+  private gameStarted: boolean = false;
+  private lastNetworkUpdate: number = 0;
+  private networkUpdateInterval: number = 100; // Send updates every 100ms (10 times per second)
+  private lastPosition: THREE.Vector3 = new THREE.Vector3();
+  private lastRotation: { x: number; y: number } = { x: 0, y: 0 };
+  private positionThreshold: number = 0.1; // Only send if moved more than 0.1 units
+  private rotationThreshold: number = 0.05; // Only send if rotated more than 0.05 radians
 
   constructor() {
     this.init();
     this.createScene();
     this.setupWeapons();
-    this.connectToServer();
+    this.setupLobby();
     this.animate();
-    this.setupControls();
   }
 
   private init() {
@@ -262,68 +268,192 @@ class Game {
     this.renderer.setClearColor(0x000000, 0);
   }
 
-  private connectToServer() {
-    this.socket = io("http://localhost:3001");
+  private setupLobby() {
+    const lobbyMenu = document.getElementById("lobbyMenu")!;
+    const hostView = document.getElementById("hostView")!;
+    const joinView = document.getElementById("joinView")!;
+    const createRoomBtn = document.getElementById("createRoomBtn")!;
+    const joinRoomBtn = document.getElementById("joinRoomBtn")!;
+    const startGameBtn = document.getElementById("startGameBtn")!;
+    const joinSubmitBtn = document.getElementById("joinSubmitBtn")!;
+    const backBtn = document.getElementById("backBtn")!;
+    const roomCodeDisplay = document.getElementById("roomCodeDisplay")!;
+    const roomCodeInput = document.getElementById("roomCodeInput") as HTMLInputElement;
 
-    this.socket.on("connect", () => {
-      console.log("Connected to server");
-    });
+    // Create room button
+    createRoomBtn.addEventListener("click", async () => {
+      lobbyMenu.classList.add("hidden");
+      hostView.classList.remove("hidden");
 
-    this.socket.on("disconnect", () => {
-      console.log("Disconnected from server");
-    });
+      this.p2pManager = new P2PManager();
 
-    // Listen for other players joining
-    this.socket.on("playerJoined", (data: { id: string; position: any }) => {
-      console.log("Player joined:", data.id);
-      this.addOtherPlayer(data.id, data.position);
-    });
+      try {
+        const roomCode = await this.p2pManager.createRoom();
+        roomCodeDisplay.textContent = roomCode;
+        console.log("Room created:", roomCode);
 
-    // Listen for other players leaving
-    this.socket.on("playerLeft", (playerId: string) => {
-      console.log("Player left:", playerId);
-      this.removeOtherPlayer(playerId);
-    });
-
-    // Listen for player movement updates
-    this.socket.on(
-      "playerMoved",
-      (data: { id: string; position: any; rotation: any }) => {
-        this.updateOtherPlayer(data.id, data.position, data.rotation);
+        this.setupP2PCallbacks();
+      } catch (error) {
+        console.error("Failed to create room:", error);
+        alert("Failed to create room. Please try again.");
+        hostView.classList.add("hidden");
+        lobbyMenu.classList.remove("hidden");
       }
-    );
-
-    // Listen for current players when we join
-    this.socket.on("currentPlayers", (players: any) => {
-      Object.keys(players).forEach((id) => {
-        if (id !== this.socket.id) {
-          this.addOtherPlayer(id, players[id].position);
-        }
-      });
     });
 
-    // Listen for other players firing
-    this.socket.on("playerFired", (data: { id: string; position: any }) => {
-      const playerMesh = this.otherPlayers.get(data.id);
-      if (playerMesh) {
-        // Trigger muzzle flash and sound for the other player
-        this.triggerRemotePlayerFire(playerMesh);
+    // Join room button
+    joinRoomBtn.addEventListener("click", () => {
+      lobbyMenu.classList.add("hidden");
+      joinView.classList.remove("hidden");
+    });
+
+    // Submit join button
+    joinSubmitBtn.addEventListener("click", async () => {
+      const roomCode = roomCodeInput.value.trim().toUpperCase();
+      if (!roomCode || roomCode.length !== 6) {
+        alert("Please enter a valid 6-character room code");
+        return;
       }
+
+      this.p2pManager = new P2PManager();
+
+      try {
+        await this.p2pManager.joinRoom(roomCode);
+        console.log("Joined room:", roomCode);
+
+        this.setupP2PCallbacks();
+        this.startGame();
+      } catch (error) {
+        console.error("Failed to join room:", error);
+        alert("Failed to join room. Please check the code and try again.");
+      }
+    });
+
+    // Back button
+    backBtn.addEventListener("click", () => {
+      joinView.classList.add("hidden");
+      lobbyMenu.classList.remove("hidden");
+      roomCodeInput.value = "";
+    });
+
+    // Start game button (host only)
+    startGameBtn.addEventListener("click", () => {
+      this.startGame();
     });
   }
 
+  private setupP2PCallbacks() {
+    // Player joined
+    this.p2pManager.onPlayerJoined = (playerId, data) => {
+      console.log("Player joined:", playerId);
+      this.addOtherPlayer(playerId, data.position);
+    };
+
+    // Player left
+    this.p2pManager.onPlayerLeft = (playerId) => {
+      console.log("Player left:", playerId);
+      this.removeOtherPlayer(playerId);
+    };
+
+    // Player moved
+    this.p2pManager.onPlayerMoved = (playerId, data) => {
+      this.updateOtherPlayer(playerId, data.position, data.rotation);
+    };
+
+    // Player fired
+    this.p2pManager.onPlayerFired = (playerId, position) => {
+      const playerMesh = this.otherPlayers.get(playerId);
+      if (playerMesh) {
+        this.triggerRemotePlayerFire(playerMesh);
+      }
+    };
+
+    // Connection established
+    this.p2pManager.onConnected = () => {
+      console.log("P2P connection established");
+    };
+
+    // Error
+    this.p2pManager.onError = (error) => {
+      console.error("P2P error:", error);
+      alert(`Connection error: ${error}`);
+    };
+  }
+
+  private startGame() {
+    if (this.gameStarted) return;
+    this.gameStarted = true;
+
+    // Hide lobby
+    const lobby = document.getElementById("lobby")!;
+    lobby.classList.add("hidden");
+
+    // Initialize last position/rotation for delta checking
+    this.lastPosition.copy(this.camera.position);
+    this.lastRotation = { x: this.pitch, y: this.yaw };
+
+    // Setup controls
+    this.setupControls();
+
+    console.log("Game started!");
+  }
+
+  private shouldSendNetworkUpdate(): boolean {
+    const now = Date.now();
+
+    // Check time threshold
+    if (now - this.lastNetworkUpdate < this.networkUpdateInterval) {
+      return false;
+    }
+
+    // Check if position or rotation changed significantly
+    const positionDelta = this.camera.position.distanceTo(this.lastPosition);
+    const rotationDelta = Math.abs(this.pitch - this.lastRotation.x) + Math.abs(this.yaw - this.lastRotation.y);
+
+    return positionDelta > this.positionThreshold || rotationDelta > this.rotationThreshold;
+  }
+
+  private sendNetworkUpdate() {
+    if (!this.p2pManager) return;
+
+    this.p2pManager.sendPlayerMove(
+      {
+        x: this.camera.position.x,
+        y: this.camera.position.y,
+        z: this.camera.position.z,
+      },
+      {
+        y: this.yaw,
+        x: this.pitch,
+      }
+    );
+
+    // Update last sent values
+    this.lastPosition.copy(this.camera.position);
+    this.lastRotation = { x: this.pitch, y: this.yaw };
+    this.lastNetworkUpdate = Date.now();
+  }
+
   private async addOtherPlayer(id: string, position: any) {
-    // Create player body
-    const bodyGeometry = new THREE.CapsuleGeometry(0.5, 1.0, 4, 8);
-    const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xd4c4a8 }); // Beige
+    // Create player body (reduced geometry complexity)
+    const bodyGeometry = new THREE.CapsuleGeometry(0.5, 1.0, 3, 6); // Reduced from 4, 8
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+      color: 0xd4c4a8,
+      roughness: 0.8,
+      metalness: 0.0
+    });
     const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
     bodyMesh.position.y = -0.25;
     bodyMesh.castShadow = true;
     bodyMesh.receiveShadow = true;
 
-    // Create player head (smaller capsule on top)
-    const headGeometry = new THREE.CapsuleGeometry(0.3, 0.3, 4, 8);
-    const headMaterial = new THREE.MeshStandardMaterial({ color: 0xd4c4a8 }); // Beige
+    // Create player head (reduced geometry complexity)
+    const headGeometry = new THREE.CapsuleGeometry(0.3, 0.3, 3, 6); // Reduced from 4, 8
+    const headMaterial = new THREE.MeshStandardMaterial({
+      color: 0xd4c4a8,
+      roughness: 0.8,
+      metalness: 0.0
+    });
     const headMesh = new THREE.Mesh(headGeometry, headMaterial);
     headMesh.position.y = 0.6;
     headMesh.castShadow = true;
@@ -374,27 +504,25 @@ class Game {
     const head = (playerMesh as any).head;
     if (!head) return;
 
-    // Create point light for muzzle flash
-    const muzzleFlash = new THREE.PointLight(0xffaa00, 50, 30);
+    // Create point light for muzzle flash (reduced intensity and range)
+    const muzzleFlash = new THREE.PointLight(0xffaa00, 15, 10);
     muzzleFlash.position.set(0.5, -0.5, -0.9); // Position at weapon barrel relative to head
     muzzleFlash.visible = false;
     head.add(muzzleFlash); // Add to head so it rotates with look direction
 
-    // Create muzzle flash sprite
+    // Create smaller muzzle flash sprite (reduced resolution)
     const canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 256;
+    canvas.width = 128; // Reduced from 256
+    canvas.height = 128;
     const ctx = canvas.getContext("2d")!;
 
-    const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
     gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
-    gradient.addColorStop(0.1, "rgba(255, 255, 200, 1)");
-    gradient.addColorStop(0.3, "rgba(255, 200, 100, 0.9)");
-    gradient.addColorStop(0.6, "rgba(255, 150, 0, 0.6)");
+    gradient.addColorStop(0.3, "rgba(255, 200, 100, 0.8)");
     gradient.addColorStop(1, "rgba(255, 100, 0, 0)");
 
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 256, 256);
+    ctx.fillRect(0, 0, 128, 128);
 
     const texture = new THREE.CanvasTexture(canvas);
     const spriteMaterial = new THREE.SpriteMaterial({
@@ -405,11 +533,11 @@ class Game {
     });
 
     const flashSprite = new THREE.Sprite(spriteMaterial);
-    flashSprite.scale.set(0.5, 0.5, 1);
-    flashSprite.position.set(0.5, -0.3, -2); // Same position as light
+    flashSprite.scale.set(0.4, 0.4, 1); // Reduced from 0.5
+    flashSprite.position.set(0.5, -0.3, -2);
     flashSprite.visible = false;
     flashSprite.renderOrder = 999;
-    head.add(flashSprite); // Add to head so it rotates with look direction
+    head.add(flashSprite);
 
     // Store references
     (playerMesh as any).muzzleFlash = muzzleFlash;
@@ -418,7 +546,7 @@ class Game {
 
     // Load gunshot sound
     const fireSound = new Audio("/assets/sounds/fn_scar_gun.mp3");
-    fireSound.volume = 0.5; // Slightly quieter for other players
+    fireSound.volume = 0.3; // Quieter for other players
     fireSound.preload = "auto";
     (playerMesh as any).fireSound = fireSound;
   }
@@ -428,11 +556,11 @@ class Game {
     const flashSprite = (playerMesh as any).muzzleFlashSprite;
     const fireSound = (playerMesh as any).fireSound;
 
-    // Show muzzle flash
+    // Show muzzle flash (shorter duration)
     if (muzzleFlash && flashSprite) {
       muzzleFlash.visible = true;
       flashSprite.visible = true;
-      (playerMesh as any).muzzleFlashTime = 0.08;
+      (playerMesh as any).muzzleFlashTime = 0.05; // Reduced from 0.08
 
       // Random rotation
       flashSprite.material.rotation = Math.random() * Math.PI * 2;
@@ -526,13 +654,13 @@ class Game {
         this.weaponManager.fire();
 
         // Broadcast fire event to other players
-        this.socket.emit("playerFired", {
-          position: {
+        if (this.p2pManager) {
+          this.p2pManager.sendPlayerFired({
             x: this.camera.position.x,
             y: this.camera.position.y,
             z: this.camera.position.z,
-          },
-        });
+          });
+        }
       }
     });
 
@@ -553,18 +681,10 @@ class Game {
           new THREE.Euler(this.pitch, this.yaw, 0, "YXZ")
         );
 
-        // Broadcast rotation to server
-        this.socket.emit("playerMove", {
-          position: {
-            x: this.camera.position.x,
-            y: this.camera.position.y,
-            z: this.camera.position.z,
-          },
-          rotation: {
-            y: this.yaw,
-            x: this.pitch,
-          },
-        });
+        // Broadcast rotation to other players (throttled with delta check)
+        if (this.shouldSendNetworkUpdate()) {
+          this.sendNetworkUpdate();
+        }
       }
     });
 
@@ -624,18 +744,10 @@ class Game {
         direction.y = 0; // Keep movement on ground level
         this.camera.position.add(direction);
 
-        // Broadcast position to server
-        this.socket.emit("playerMove", {
-          position: {
-            x: this.camera.position.x,
-            y: this.camera.position.y,
-            z: this.camera.position.z,
-          },
-          rotation: {
-            y: this.yaw,
-            x: this.pitch,
-          },
-        });
+        // Broadcast position to other players (throttled with delta check)
+        if (this.shouldSendNetworkUpdate()) {
+          this.sendNetworkUpdate();
+        }
       }
     };
   }

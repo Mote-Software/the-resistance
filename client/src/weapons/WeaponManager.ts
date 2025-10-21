@@ -235,59 +235,28 @@ export class Weapon {
     return this.aimTransition;
   }
 
-  // Create muzzle flash effect
+  // Create muzzle flash effect (optimized)
   private createMuzzleFlash(): void {
-    // Create point light for muzzle flash - much brighter and larger range
-    this.muzzleFlash = new THREE.PointLight(0xffaa00, 50, 30);
+    // Create point light for muzzle flash - reduced intensity and range for better performance
+    this.muzzleFlash = new THREE.PointLight(0xffaa00, 20, 15);
     this.muzzleFlash.position.set(0, 0, -0.8); // Position at barrel end
     this.muzzleFlash.visible = false;
     this.group.add(this.muzzleFlash);
 
-    // Create multiple flash sprites for more realistic effect
-    // Sprite 1: Circular flash
-    const circleTexture = this.createCircularFlashTexture();
-    const circleSprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: circleTexture,
+    // Create single optimized flash sprite instead of 3
+    const flashTexture = this.createCircularFlashTexture();
+    const flashSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: flashTexture,
       blending: THREE.AdditiveBlending,
       transparent: true,
       depthWrite: false,
     }));
-    circleSprite.scale.set(1.2, 1.2, 1);
-    circleSprite.position.set(0, 0, -0.8);
-    circleSprite.visible = false;
-    circleSprite.renderOrder = 999;
-    this.group.add(circleSprite);
-    this.muzzleFlashSprites.push(circleSprite);
-
-    // Sprite 2: Star-shaped flash
-    const starTexture = this.createStarFlashTexture();
-    const starSprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: starTexture,
-      blending: THREE.AdditiveBlending,
-      transparent: true,
-      depthWrite: false,
-    }));
-    starSprite.scale.set(1.0, 1.0, 1);
-    starSprite.position.set(0, 0, -0.8);
-    starSprite.visible = false;
-    starSprite.renderOrder = 1000;
-    this.group.add(starSprite);
-    this.muzzleFlashSprites.push(starSprite);
-
-    // Sprite 3: Cross-shaped flash
-    const crossTexture = this.createCrossFlashTexture();
-    const crossSprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: crossTexture,
-      blending: THREE.AdditiveBlending,
-      transparent: true,
-      depthWrite: false,
-    }));
-    crossSprite.scale.set(1.4, 1.4, 1);
-    crossSprite.position.set(0, 0, -0.8);
-    crossSprite.visible = false;
-    crossSprite.renderOrder = 998;
-    this.group.add(crossSprite);
-    this.muzzleFlashSprites.push(crossSprite);
+    flashSprite.scale.set(1.0, 1.0, 1);
+    flashSprite.position.set(0, 0, -0.8);
+    flashSprite.visible = false;
+    flashSprite.renderOrder = 999;
+    this.group.add(flashSprite);
+    this.muzzleFlashSprites.push(flashSprite);
   }
 
   private createCircularFlashTexture(): THREE.CanvasTexture {
@@ -375,26 +344,24 @@ export class Weapon {
     this.fireSound.preload = 'auto';
   }
 
-  // Fire the weapon
+  // Fire the weapon (optimized)
   fire(): void {
     if (!this.isLoaded) return;
 
     // Trigger muzzle flash light
     if (this.muzzleFlash) {
       this.muzzleFlash.visible = true;
-      this.muzzleFlashTime = 0.08;
+      this.muzzleFlashTime = 0.06; // Reduced from 0.08 for snappier feel
     }
 
-    // Trigger all muzzle flash sprites with random rotations
-    this.muzzleFlashSprites.forEach((sprite, index) => {
+    // Trigger single muzzle flash sprite with random rotation
+    if (this.muzzleFlashSprites.length > 0) {
+      const sprite = this.muzzleFlashSprites[0];
       sprite.visible = true;
       sprite.material.rotation = Math.random() * Math.PI * 2;
-
-      // Slight scale variation per sprite
-      const baseScale = [1.2, 1.0, 1.4][index];
-      const randomScale = baseScale * (1.0 + Math.random() * 0.3);
+      const randomScale = 1.0 + Math.random() * 0.2;
       sprite.scale.set(randomScale, randomScale, 1);
-    });
+    }
 
     // Play fire sound
     if (this.fireSound) {
@@ -410,8 +377,6 @@ export class Weapon {
     this.recoilOffset.y = recoilAmount * 0.2; // Slight upward movement
     this.recoilRotation.x = 0;
     this.recoilRotation.z = 0;
-
-    console.log("Weapon fired!");
   }
 
   // Update weapon position to stay relative to camera
