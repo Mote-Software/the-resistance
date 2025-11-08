@@ -30,6 +30,13 @@ class Game {
   private rotationThreshold: number = 0.02; // Send if rotated more than 0.02 radians (reduced)
   private collisionManager!: CollisionManager;
 
+  // Jump mechanics
+  private isJumping: boolean = false;
+  private verticalVelocity: number = 0;
+  private readonly GRAVITY: number = 20; // Gravity acceleration (units/s²)
+  private readonly JUMP_VELOCITY: number = 7; // Initial jump velocity (units/s)
+  private readonly GROUND_Y: number = 2.5; // Player's eye height when on ground
+
   constructor() {
     this.init();
     this.createScene();
@@ -767,6 +774,12 @@ class Game {
       if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
         this.weaponManager.startAiming();
       }
+
+      // Handle jump with Spacebar
+      if (event.code === "Space" && !this.isJumping) {
+        this.isJumping = true;
+        this.verticalVelocity = this.JUMP_VELOCITY;
+      }
     });
 
     document.addEventListener("keyup", (event) => {
@@ -830,6 +843,28 @@ class Game {
     // Movement handling is set up in setupControls
   }
 
+  private handleJump(deltaTime: number) {
+    if (this.isJumping || this.camera.position.y > this.GROUND_Y) {
+      // Apply gravity
+      this.verticalVelocity -= this.GRAVITY * deltaTime;
+
+      // Update vertical position
+      this.camera.position.y += this.verticalVelocity * deltaTime;
+
+      // Check if landed
+      if (this.camera.position.y <= this.GROUND_Y) {
+        this.camera.position.y = this.GROUND_Y;
+        this.verticalVelocity = 0;
+        this.isJumping = false;
+      }
+
+      // Broadcast position change when jumping
+      if (this.shouldSendNetworkUpdate()) {
+        this.sendNetworkUpdate();
+      }
+    }
+  }
+
   private updateFPS(currentTime: number) {
     this.frameCount++;
 
@@ -857,6 +892,7 @@ class Game {
 
     this.updateFPS(currentTime);
     this.handleMovement(deltaTime);
+    this.handleJump(deltaTime);
 
     // Update weapon system
     if (this.weaponManager) {
