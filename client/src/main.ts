@@ -3,6 +3,7 @@ import { RGBELoader, TDSLoader } from "three-stdlib";
 import { WeaponManager } from "./weapons/WeaponManager";
 import { FNScarConfig } from "./weapons/configs/FNScar";
 import { P2PManager } from "./network/P2PManager";
+import { CollisionManager } from "./CollisionManager";
 
 class Game {
   private scene!: THREE.Scene;
@@ -27,6 +28,7 @@ class Game {
   private lastRotation: { x: number; y: number } = { x: 0, y: 0 };
   private positionThreshold: number = 0.05; // Send if moved more than 0.05 units (reduced)
   private rotationThreshold: number = 0.02; // Send if rotated more than 0.02 radians (reduced)
+  private collisionManager!: CollisionManager;
 
   constructor() {
     this.init();
@@ -64,6 +66,9 @@ class Game {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     document.body.appendChild(this.renderer.domElement);
+
+    // Initialize collision manager
+    this.collisionManager = new CollisionManager(this.scene, this.camera);
   }
 
   private createScene() {
@@ -173,6 +178,31 @@ class Game {
 
         this.scene.add(object);
         console.log("Town model added to scene");
+
+        // Initialize collision detection after model is loaded
+        // Wait a frame to ensure everything is properly added to the scene
+        setTimeout(() => {
+          this.collisionManager.initializeCollisionObjects();
+
+          // Set map boundaries based on town size (scaled 0.1x)
+          // The town model is very large, so we set wider boundaries
+          this.collisionManager.setMapBounds(-225, 225, -225, 225);
+
+          // Exclude weapon from collision if already loaded
+          if (this.weaponManager) {
+            const weapon = this.weaponManager.getActiveWeapon();
+            if (weapon) {
+              weapon.getObject().traverse((child) => {
+                if (child instanceof THREE.Mesh) {
+                  this.collisionManager.excludeFromCollision(child);
+                }
+              });
+              console.log("Weapon excluded from collision (post-init)");
+            }
+          }
+
+          console.log("Collision system initialized");
+        }, 100);
       },
       (progress) => {
         console.log(
@@ -199,6 +229,17 @@ class Game {
     try {
       await this.weaponManager.equipWeapon("fn_scar");
       console.log("FN SCAR equipped successfully");
+
+      // Exclude weapon model from collision detection
+      const weapon = this.weaponManager.getActiveWeapon();
+      if (weapon && this.collisionManager) {
+        weapon.getObject().traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            this.collisionManager.excludeFromCollision(child);
+          }
+        });
+        console.log("Weapon excluded from collision detection");
+      }
     } catch (error) {
       console.error("Failed to equip weapon:", error);
     }
@@ -369,7 +410,7 @@ class Game {
     };
 
     // Player fired
-    this.p2pManager.onPlayerFired = (playerId, position) => {
+    this.p2pManager.onPlayerFired = (playerId, _position) => {
       const playerMesh = this.otherPlayers.get(playerId);
       if (playerMesh) {
         this.triggerRemotePlayerFire(playerMesh);
@@ -511,6 +552,15 @@ class Game {
 
     this.otherPlayers.set(id, playerMesh);
     this.scene.add(playerMesh);
+
+    // Exclude player meshes from collision detection
+    if (this.collisionManager) {
+      playerMesh.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          this.collisionManager.excludeFromCollision(child);
+        }
+      });
+    }
   }
 
   private addMuzzleFlashToPlayer(playerMesh: THREE.Group) {
@@ -751,7 +801,22 @@ class Game {
       if (this.isMoving) {
         direction.applyQuaternion(this.camera.quaternion);
         direction.y = 0; // Keep movement on ground level
-        this.camera.position.add(direction);
+
+        // Calculate new position with collision detection
+        const currentPosition = this.camera.position.clone();
+        const newPosition = currentPosition.clone().add(direction);
+
+        // Validate movement through collision manager
+        if (this.collisionManager) {
+          const validatedPosition = this.collisionManager.validateMovement(
+            currentPosition,
+            newPosition
+          );
+          this.camera.position.copy(validatedPosition);
+        } else {
+          // Fallback if collision manager not initialized yet
+          this.camera.position.add(direction);
+        }
 
         // Broadcast position to other players (throttled with delta check)
         if (this.shouldSendNetworkUpdate()) {
