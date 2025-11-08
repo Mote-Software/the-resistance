@@ -531,8 +531,9 @@ class Game {
     // Add muzzle flash to weapon
     this.addMuzzleFlashToPlayer(playerMesh);
 
-    // Position at ground level (capsule center, camera is at y=2.5)
-    playerMesh.position.set(position.x, 1.75, position.z);
+    // Position at ground level with offset from camera height
+    // Camera at y=2.5, player model offset by -0.75
+    playerMesh.position.set(position.x, position.y - 0.75, position.z);
 
     // Load weapon for the other player
     const weaponManager = new WeaponManager(this.scene, this.camera);
@@ -682,7 +683,9 @@ class Game {
   private updateOtherPlayer(id: string, position: any, rotation: any) {
     const playerMesh = this.otherPlayers.get(id);
     if (playerMesh) {
-      playerMesh.position.set(position.x, 1.75, position.z);
+      // Update position including Y coordinate for jump synchronization
+      // Offset by -0.75 to account for player model being centered at feet/body, not camera height
+      playerMesh.position.set(position.x, position.y - 0.75, position.z);
       if (rotation) {
         // Rotate body based on yaw
         playerMesh.rotation.y = rotation.y;
